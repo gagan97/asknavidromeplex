@@ -160,36 +160,47 @@ def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
         return None
 
 
-def enqueue_songs(api: SubsonicConnection, queue: MediaQueue, song_id_list: list) -> None:
+def enqueue_songs(api, queue: MediaQueue, song_id_list: list, source: str = 'navidrome') -> None:
     """Enqueue songs
 
     Add Track objects to the queue deque
 
-    :param SubsonicConnection api: A SubsonicConnection object to allow access to the Navidrome API
+    :param api: A SubsonicConnection or PlexConnection object to allow access to the API
     :param MediaQueue queue: A MediaQueue object
-    :param list song_id_list: A list of song IDs to enqueue
+    :param list song_id_list: A list of song IDs to enqueue (can be IDs or (id, source) tuples)
+    :param str source: Default source if song_id_list contains plain IDs
     :return: None
     """
 
-    for song_id in song_id_list:
-        song_details = api.get_song_details(song_id)
-        song_uri = api.get_song_uri(song_id)
+    for item in song_id_list:
+        # Handle both plain IDs and (id, source) tuples
+        if isinstance(item, tuple):
+            song_id, song_source = item
+        else:
+            song_id = item
+            song_source = source
+
+        song_details = api.get_song_details(song_id, song_source) if hasattr(api, 'get_song_details') else api.get_song_details(song_id)
+        song_uri = api.get_song_uri(song_id, song_source) if hasattr(api, 'get_song_uri') else api.get_song_uri(song_id)
+
+        song_data = song_details.get('song', {})
 
         # Create track object from song details
-        new_track = Track(song_details.get('song').get('id'),
-                          song_details.get('song').get('title'),
-                          song_details.get('song').get('artist'),
-                          song_details.get('song').get('artistId'),
-                          song_details.get('song').get('album'),
-                          song_details.get('song').get('albumId'),
-                          song_details.get('song').get('track'),
-                          song_details.get('song').get('year'),
-                          song_details.get('song').get('genre'),
-                          song_details.get('song').get('duration'),
-                          song_details.get('song').get('bitRate'),
+        new_track = Track(song_data.get('id'),
+                          song_data.get('title'),
+                          song_data.get('artist'),
+                          song_data.get('artistId'),
+                          song_data.get('album'),
+                          song_data.get('albumId'),
+                          song_data.get('track'),
+                          song_data.get('year'),
+                          song_data.get('genre'),
+                          song_data.get('duration'),
+                          song_data.get('bitRate'),
                           song_uri,
                           0,
-                          None)
+                          None,
+                          song_source)
 
         # Add track object to queue
         queue.add_track(new_track)

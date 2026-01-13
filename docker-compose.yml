@@ -3,14 +3,23 @@ services:
     navisonic:       
         environment:
             - 'NAVI_SKILL_ID=<your-skill-id>'
+            # Navidrome/Subsonic settings
+            - 'ENABLE_NAVIDROME=1'
             - 'NAVI_URL=https://your-navidrome-server.test'
             - 'NAVI_USER=<username>'
             - 'NAVI_PASS=<password>'
-            - 'NAVI_SONG_COUNT=50'
             - 'NAVI_PORT=443'
             - 'NAVI_API_PATH=/rest'
             - 'NAVI_API_VER=1.16.1'
-            - 'NAVI_DEBUG=1'              
+            # Plex settings (optional)
+            - 'ENABLE_PLEX=0'
+            - 'PLEX_URL=http://your-plex-server.test'
+            - 'PLEX_TOKEN=<your-plex-token>'
+            - 'PLEX_PORT=32400'
+            # General settings
+            - 'NAVI_SONG_COUNT=50'
+            - 'NAVI_DEBUG=1'
+            - 'PREFER_HIGH_BITRATE=0'
         ports:
             - '5000:5000'
         image: 'ghcr.io/rosskouk/asknavidrome:latest'

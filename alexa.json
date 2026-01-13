@@ -143,6 +143,23 @@
                     ]
                 },
                 {
+                    "name": "NaviSonicPlaySong",
+                    "slots": [
+                        {
+                            "name": "song",
+                            "type": "AMAZON.MusicRecording"
+                        }
+                    ],
+                    "samples": [
+                        "Play {song}",
+                        "Play the song {song}",
+                        "Play song {song}",
+                        "Put on {song}",
+                        "I want to hear {song}",
+                        "Can you play {song}"
+                    ]
+                },
+                {
                     "name": "NaviSonicPlayFavouriteSongs",
                     "slots": [],
                     "samples": [
@@ -186,6 +203,87 @@
                         "shuffle",
                         "shuffle the queue"
                     ]
+                },
+                {
+                    "name": "NaviSonicLoopOn",
+                    "slots": [],
+                    "samples": [
+                        "play on loop",
+                        "play in a loop",
+                        "play playlist on loop",
+                        "loop",
+                        "loop on",
+                        "turn on loop",
+                        "enable loop",
+                        "loop the playlist",
+                        "loop the queue",
+                        "repeat all",
+                        "repeat the playlist"
+                    ]
+                },
+                {
+                    "name": "NaviSonicLoopOff",
+                    "slots": [],
+                    "samples": [
+                        "stop playing on loop",
+                        "loop off",
+                        "turn off loop",
+                        "disable loop",
+                        "stop looping",
+                        "no loop"
+                    ]
+                },
+                {
+                    "name": "NaviSonicRepeatOn",
+                    "slots": [],
+                    "samples": [
+                        "play on repeat",
+                        "play this on repeat",
+                        "repeat",
+                        "repeat on",
+                        "turn on repeat",
+                        "enable repeat",
+                        "repeat this song",
+                        "repeat one",
+                        "play this song on repeat",
+                        "keep playing this song"
+                    ]
+                },
+                {
+                    "name": "NaviSonicRepeatOff",
+                    "slots": [],
+                    "samples": [
+                        "stop playing on repeat",
+                        "repeat off",
+                        "turn off repeat",
+                        "disable repeat",
+                        "stop repeating",
+                        "no repeat"
+                    ]
+                },
+                {
+                    "name": "AMAZON.ShuffleOnIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.ShuffleOffIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.LoopOnIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.LoopOffIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.RepeatIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.StartOverIntent",
+                    "samples": []
                 }
             ],
             "types": [
