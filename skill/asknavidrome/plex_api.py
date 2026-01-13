@@ -176,6 +176,7 @@ class PlexConnection:
                             songs = []
                             for m in metadata:
                                 media = m.get('Media', [{}])[0] if m.get('Media') else {}
+                                duration_ms = m.get('duration') or 0
                                 songs.append({
                                     'id': m.get('ratingKey'),
                                     'title': m.get('title'),
@@ -183,7 +184,7 @@ class PlexConnection:
                                     'artistId': m.get('grandparentRatingKey'),
                                     'album': m.get('parentTitle'),
                                     'albumId': m.get('parentRatingKey'),
-                                    'duration': m.get('duration', 0) // 1000,
+                                    'duration': duration_ms // 1000 if duration_ms else 0,
                                     'bitRate': media.get('bitrate', 0),
                                     'track': m.get('index', 0),
                                     'year': m.get('year', 0),
@@ -248,6 +249,7 @@ class PlexConnection:
                 data = response.json()
                 metadata = data.get('MediaContainer', {}).get('Metadata', [{}])[0]
                 media = metadata.get('Media', [{}])[0] if metadata.get('Media') else {}
+                duration_ms = metadata.get('duration') or 0
 
                 return {
                     'song': {
@@ -260,7 +262,7 @@ class PlexConnection:
                         'track': metadata.get('index', 0),
                         'year': metadata.get('year', 0),
                         'genre': metadata.get('Genre', [{}])[0].get('tag', '') if metadata.get('Genre') else '',
-                        'duration': metadata.get('duration', 0) // 1000,
+                        'duration': duration_ms // 1000 if duration_ms else 0,
                         'bitRate': media.get('bitrate', 0)
                     }
                 }

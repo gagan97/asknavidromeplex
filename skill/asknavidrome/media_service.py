@@ -110,7 +110,9 @@ class MediaService:
             key = (self._normalize_string(song.get('title', '')),
                    self._normalize_string(song.get('artist', '')))
             existing = song_map.get(key)
-            if not existing or (song.get('bitRate', 0) or 0) > (existing.get('bitRate', 0) or 0):
+            song_bitrate = song.get('bitRate') or 0
+            existing_bitrate = existing.get('bitRate', 0) if existing else 0
+            if not existing or song_bitrate > existing_bitrate:
                 song_map[key] = song
 
         return list(song_map.values())

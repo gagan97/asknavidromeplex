@@ -944,8 +944,6 @@ class NaviSonicStartOver(AbstractRequestHandler):
 
         return controller.start_playback('play', None, None, current_track, handler_input)
 
-        return handler_input.response_builder.response
-
 #
 # AudioPlayer Handlers
 #
