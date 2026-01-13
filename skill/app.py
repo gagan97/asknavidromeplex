@@ -540,6 +540,61 @@ class NaviSonicPlayPlaylist(AbstractRequestHandler):
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
 
+class NaviSonicShufflePlaylist(AbstractRequestHandler):
+    """Handle NaviSonicShufflePlaylist
+
+    Shuffle and play the given playlist
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('NaviSonicShufflePlaylist')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        global backgroundProcess
+        logger.debug('In NaviSonicShufflePlaylist')
+
+        # Check if a background process is already running, if it is then terminate the process
+        # in favour of the new process.
+        if backgroundProcess is not None:
+            backgroundProcess.terminate()
+            backgroundProcess.join()
+
+        # Get the requested playlist
+        playlist = get_slot_value_v2(handler_input, 'playlist')
+
+        # Search for a playlist (returns tuple of (id, source) or None)
+        playlist_result = connection.search_playlist(playlist.value)
+
+        if playlist_result is None:
+            text = sanitise_speech_output("I couldn't find the playlist " + str(playlist.value) + ' in the collection.')
+            handler_input.response_builder.speak(text).ask(text)
+
+            return handler_input.response_builder.response
+
+        else:
+            playlist_id, source = playlist_result
+            song_id_list = connection.build_song_list_from_playlist(playlist_id, source)
+
+            # Shuffle the song list
+            random.shuffle(song_id_list)
+
+            play_queue.clear()
+
+            # Work around the Amazon / Alexa 8 second timeout.
+            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]], source)  # When generating the playlist return the first two tracks.
+            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
+            backgroundProcess.start()  # Start the additional thread
+
+            speech = sanitise_speech_output('Shuffling and playing playlist ' + str(playlist.value))
+            logger.info(speech)
+            card = {'title': 'AskNavidrome',
+                    'text': speech
+                    }
+            track_details = play_queue.get_next_track()
+
+            return controller.start_playback('play', speech, card, track_details, handler_input)
+
+
 class NaviSonicPlayMusicByGenre(AbstractRequestHandler):
     """ Play songs from the given genre
 
@@ -1334,6 +1389,7 @@ sb.add_request_handler(NaviSonicPlayAlbumByArtist())
 sb.add_request_handler(NaviSonicPlaySongByArtist())
 sb.add_request_handler(NaviSonicPlaySong())
 sb.add_request_handler(NaviSonicPlayPlaylist())
+sb.add_request_handler(NaviSonicShufflePlaylist())
 sb.add_request_handler(NaviSonicPlayFavouriteSongs())
 sb.add_request_handler(NaviSonicPlayMusicByGenre())
 sb.add_request_handler(NaviSonicPlayMusicRandom())

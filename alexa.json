@@ -203,8 +203,27 @@
                     "samples": [
                         "randomise the queue",
                         "randomise",
-                        "shuffle",
-                        "shuffle the queue"
+                        "shuffle the queue",
+                        "shuffle current queue",
+                        "shuffle what's playing"
+                    ]
+                },
+                {
+                    "name": "NaviSonicShufflePlaylist",
+                    "slots": [
+                        {
+                            "name": "playlist",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "shuffle the {playlist} playlist",
+                        "shuffle playlist {playlist}",
+                        "shuffle {playlist} playlist",
+                        "shuffle and play the {playlist} playlist",
+                        "shuffle and play {playlist} playlist",
+                        "play {playlist} playlist shuffled",
+                        "play the {playlist} playlist on shuffle"
                     ]
                 },
                 {
