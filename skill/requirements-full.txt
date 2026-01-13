@@ -2,6 +2,7 @@
 ask-sdk
 flask-ask-sdk
 py-sonic
+requests
 
 # Dev
 sphinx

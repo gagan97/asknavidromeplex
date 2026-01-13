@@ -13,6 +13,11 @@ class MediaQueue:
     the tracks in the current play queue
     """
 
+    # Playback mode constants
+    MODE_NORMAL = 'normal'
+    MODE_REPEAT_ONE = 'repeat_one'
+    MODE_LOOP = 'loop'
+
     def __init__(self) -> None:
         """
         :return: None
@@ -39,6 +44,12 @@ class MediaQueue:
 
         self.current_track: Track = Track()
         """Property to hold the current track object"""
+
+        self.playback_mode: str = self.MODE_NORMAL
+        """Playback mode: normal, repeat_one, or loop"""
+
+        self.original_queue: deque = deque()
+        """Original queue for loop mode"""
 
     def get_current_track(self) -> Track:
         """Method to return current_track attribute
@@ -167,13 +178,30 @@ class MediaQueue:
     def get_next_track(self) -> Track:
         """Get the next track
 
-        Get the next track from self.queue and add it to the history deque
+        Get the next track from self.queue and add it to the history deque.
+        Handles repeat_one and loop playback modes.
 
         :return: The next track object
         :rtype: Track
         """
 
         self.logger.debug('In get_next_track()')
+
+        # Handle repeat_one mode - return the same track
+        if self.playback_mode == self.MODE_REPEAT_ONE and self.current_track.id:
+            self.current_track.offset = 0
+            return self.current_track
+
+        # Check if queue is empty
+        if len(self.queue) == 0:
+            # Handle loop mode - restore original queue
+            if self.playback_mode == self.MODE_LOOP and len(self.original_queue) > 0:
+                self.logger.debug('Loop mode: restoring original queue')
+                self.queue = deepcopy(self.original_queue)
+                self.history.clear()
+            else:
+                # No more tracks
+                return self.current_track
 
         if self.current_track.id == '' or self.current_track.id is None:
             # This is the first track
@@ -236,6 +264,9 @@ class MediaQueue:
         self.queue.clear()
         self.history.clear()
         self.buffer.clear()
+        self.original_queue.clear()
+        self.playback_mode = self.MODE_NORMAL
+        self.current_track = Track()
 
     def get_queue_count(self) -> int:
         """Get the number of tracks in the queue
@@ -270,3 +301,36 @@ class MediaQueue:
         """
 
         self.buffer = deepcopy(self.queue)
+
+    def set_playback_mode(self, mode: str) -> None:
+        """Set the playback mode
+
+        :param str mode: 'normal', 'repeat_one', or 'loop'
+        :return: None
+        """
+        self.logger.debug(f'Setting playback mode to: {mode}')
+        if mode in [self.MODE_NORMAL, self.MODE_REPEAT_ONE, self.MODE_LOOP]:
+            self.playback_mode = mode
+            if mode == self.MODE_LOOP and len(self.original_queue) == 0:
+                # Store original queue for loop mode
+                self.original_queue = deepcopy(self.queue)
+                if self.current_track.id:
+                    self.original_queue.appendleft(self.current_track)
+
+    def get_playback_mode(self) -> str:
+        """Get the current playback mode
+
+        :return: Current playback mode
+        :rtype: str
+        """
+        return self.playback_mode
+
+    def save_original_queue(self) -> None:
+        """Save the current queue as the original for loop mode
+
+        :return: None
+        """
+        self.logger.debug('Saving original queue for loop mode')
+        self.original_queue = deepcopy(self.queue)
+        if self.current_track.id:
+            self.original_queue.appendleft(deepcopy(self.current_track))

@@ -15,9 +15,10 @@ from ask_sdk_model import Response
 from ask_sdk_core.dispatch_components import AbstractExceptionHandler
 from flask_ask_sdk.skill_adapter import SkillAdapter
 
-import asknavidrome.subsonic_api as api
+import asknavidrome.subsonic_api as subsonic_api
 import asknavidrome.media_queue as queue
 import asknavidrome.controller as controller
+from asknavidrome.media_service import MediaService
 
 # Create web service
 app = Flask(__name__)
@@ -42,138 +43,126 @@ logger.addHandler(handler)
 # Get service configuration
 #
 
-logger.info('AskNavidrome 0.9!')
+logger.info('AskNavidrome 1.0 - Multi-source media player!')
 logger.debug('Getting configuration from the environment...')
 
+# Required configuration
 try:
     if 'NAVI_SKILL_ID' in os.environ:
-        # Set skill ID, this is available on the Alexa Developer Console
-        # if this is not set the web service will respond to any skill.
         sb.skill_id = os.getenv('NAVI_SKILL_ID')
-
         logger.info(f'Skill ID set to: {sb.skill_id}')
-
     else:
         raise NameError
 except NameError as err:
     logger.error(f'The Alexa skill ID was not found! {err}')
     raise
 
-try:
-    if 'NAVI_SONG_COUNT' in os.environ:
-        min_song_count = os.getenv('NAVI_SONG_COUNT')
+# Song count configuration
+min_song_count = os.getenv('NAVI_SONG_COUNT', '50')
+logger.info(f'Minimum song count is set to: {min_song_count}')
 
-        logger.info(f'Minimum song count is set to: {min_song_count}')
+# Feature flags
+enable_navidrome = os.getenv('ENABLE_NAVIDROME', '1').lower() in ('1', 'true', 'yes')
+enable_plex = os.getenv('ENABLE_PLEX', '0').lower() in ('1', 'true', 'yes')
+prefer_high_bitrate = os.getenv('PREFER_HIGH_BITRATE', '0').lower() in ('1', 'true', 'yes')
 
-    else:
-        raise NameError
-except NameError as err:
-    logger.error(f'The minimum song count was not found! {err}')
-    raise
+logger.info(f'Navidrome enabled: {enable_navidrome}')
+logger.info(f'Plex enabled: {enable_plex}')
+logger.info(f'Prefer high bitrate: {prefer_high_bitrate}')
 
-try:
-    if 'NAVI_URL' in os.environ:
+# At least one source must be enabled
+if not enable_navidrome and not enable_plex:
+    logger.error('At least one media source must be enabled (ENABLE_NAVIDROME or ENABLE_PLEX)')
+    raise RuntimeError('No media source enabled')
+
+# Navidrome configuration
+navidrome_connection = None
+if enable_navidrome:
+    try:
         navidrome_url = os.getenv('NAVI_URL')
-
-        logger.info(f'The URL for Navidrome is set to: {navidrome_url}')
-
-    else:
-        raise NameError
-except NameError as err:
-    logger.error(f'The URL of the Navidrome server was not found! {err}')
-    raise
-
-try:
-    if 'NAVI_USER' in os.environ:
         navidrome_user = os.getenv('NAVI_USER')
-
-        logger.info(f'The Navidrome user name is set to: {navidrome_user}')
-
-    else:
-        raise NameError
-except NameError as err:
-    logger.error(f'The Navidrome user name was not found! {err}')
-    raise
-
-try:
-    if 'NAVI_PASS' in os.environ:
         navidrome_passwd = os.getenv('NAVI_PASS')
+        navidrome_port = os.getenv('NAVI_PORT', '443')
+        navidrome_api_location = os.getenv('NAVI_API_PATH', '/rest')
+        navidrome_api_version = os.getenv('NAVI_API_VER', '1.16.1')
 
-        logger.info('The Navidrome password is set')
+        if not all([navidrome_url, navidrome_user, navidrome_passwd]):
+            raise ValueError('Missing Navidrome configuration')
 
-    else:
-        raise NameError
-except NameError as err:
-    logger.error(f'The Navidrome password was not found! {err}')
-    raise
+        logger.info(f'Navidrome URL: {navidrome_url}')
+        logger.info(f'Navidrome user: {navidrome_user}')
+        logger.info(f'Navidrome port: {navidrome_port}')
 
-try:
-    if 'NAVI_PORT' in os.environ:
-        navidrome_port = os.getenv('NAVI_PORT')
+        navidrome_connection = subsonic_api.SubsonicConnection(
+            navidrome_url,
+            navidrome_user,
+            navidrome_passwd,
+            navidrome_port,
+            navidrome_api_location,
+            navidrome_api_version
+        )
+        navidrome_connection.ping()
+        logger.info('Successfully connected to Navidrome')
+    except Exception as e:
+        logger.error(f'Failed to connect to Navidrome: {e}')
+        if not enable_plex:
+            raise RuntimeError('Could not connect to Navidrome and Plex is not enabled!')
 
-        logger.info(f'The Navidrome port is set to: {navidrome_port}')
+# Plex configuration
+plex_connection = None
+if enable_plex:
+    try:
+        from asknavidrome.plex_api import PlexConnection
 
-    else:
-        raise NameError
-except NameError as err:
-    logger.error(f'The Navidrome port was not found! {err}')
-    raise
+        plex_url = os.getenv('PLEX_URL')
+        plex_token = os.getenv('PLEX_TOKEN')
+        plex_port = int(os.getenv('PLEX_PORT', '32400'))
 
-try:
-    if 'NAVI_API_PATH' in os.environ:
-        navidrome_api_location = os.getenv('NAVI_API_PATH')
+        if not all([plex_url, plex_token]):
+            raise ValueError('Missing Plex configuration (PLEX_URL, PLEX_TOKEN)')
 
-        logger.info(f'The Navidrome API path is set to: {navidrome_api_location}')
+        logger.info(f'Plex URL: {plex_url}')
+        logger.info(f'Plex port: {plex_port}')
 
-    else:
-        raise NameError
-except NameError as err:
-    logger.error(f'The Navidrome API path was not found! {err}')
-    raise
+        plex_connection = PlexConnection(plex_url, plex_token, plex_port)
+        plex_connection.ping()
+        logger.info('Successfully connected to Plex')
+    except Exception as e:
+        logger.error(f'Failed to connect to Plex: {e}')
+        if not navidrome_connection:
+            raise RuntimeError('Could not connect to Plex and Navidrome is not available!')
 
-try:
-    if 'NAVI_API_VER' in os.environ:
-        navidrome_api_version = os.getenv('NAVI_API_VER')
+# Create unified media service
+media_service = MediaService(
+    navidrome_conn=navidrome_connection,
+    plex_conn=plex_connection,
+    prefer_high_bitrate=prefer_high_bitrate
+)
 
-        logger.info(f'The Navidrome API version is set to: {navidrome_api_version}')
-
-    else:
-        raise NameError
-except NameError as err:
-    logger.error(f'The Navidrome API version was not found! {err}')
-    raise
+# For backward compatibility, use the connection variable
+connection = media_service
 
 logger.debug('Configuration has been successfully loaded')
 
 # Set log level based on config value
-if 'NAVI_DEBUG' in os.environ:
-    navidrome_log_level = int(os.getenv('NAVI_DEBUG'))
+navidrome_log_level = int(os.getenv('NAVI_DEBUG', '1'))
 
-    if navidrome_log_level == 0:
-        # Warnings and higher
-        logger.setLevel(logging.WARNING)
-        logger.warning('Log level set to WARNING')
-
-    elif navidrome_log_level == 1:
-        # Info messages and higher
-        logger.setLevel(logging.INFO)
-        logger.info('Log level set to INFO')
-
-    elif navidrome_log_level == 2:
-        # Debug with request and response interceptors
-        logger.setLevel(logging.DEBUG)
-        logger.debug('Log level set to DEBUG')
-
-    elif navidrome_log_level == 3:
-        # Debug with request / response interceptors and Web GUI
-        logger.setLevel(logging.DEBUG)
-        logger.debug('Log level set to DEBUG')
-
-    else:
-        # Invalid value provided - set to WARNING
-        navidrome_log_level = 0
-        logger.setLevel(logging.WARNING)
-        logger.warning('Log level set to WARNING')
+if navidrome_log_level == 0:
+    logger.setLevel(logging.WARNING)
+    logger.warning('Log level set to WARNING')
+elif navidrome_log_level == 1:
+    logger.setLevel(logging.INFO)
+    logger.info('Log level set to INFO')
+elif navidrome_log_level == 2:
+    logger.setLevel(logging.DEBUG)
+    logger.debug('Log level set to DEBUG')
+elif navidrome_log_level == 3:
+    logger.setLevel(logging.DEBUG)
+    logger.debug('Log level set to DEBUG')
+else:
+    navidrome_log_level = 0
+    logger.setLevel(logging.WARNING)
+    logger.warning('Log level set to WARNING')
 
 # Create a shareable queue than can be updated by multiple threads to enable larger playlists
 # to be returned in the back ground avoiding the Amazon 8 second timeout
@@ -187,20 +176,6 @@ logger.debug('MediaQueue object created...')
 # this is used to avoid concurrency issues if there is an attempt to load multiple playlists
 # at the same time.
 backgroundProcess = None
-
-# Connect to Navidrome
-connection = api.SubsonicConnection(navidrome_url,
-                                    navidrome_user,
-                                    navidrome_passwd,
-                                    navidrome_port,
-                                    navidrome_api_location,
-                                    navidrome_api_version)
-
-try:
-    connection.ping()
-
-except:
-    raise RuntimeError('Could not connect to SubSonic API!')
 
 logger.info('AskNavidrome Web Service is ready to start!')
 
@@ -317,15 +292,18 @@ class NaviSonicPlayMusicByArtist(AbstractRequestHandler):
             return handler_input.response_builder.response
 
         else:
+            # Get source from search result
+            source = artist_lookup[0].get('source', 'navidrome')
+
             # Get a list of albums by the artist
-            artist_album_lookup = connection.albums_by_artist(artist_lookup[0].get('id'))
+            artist_album_lookup = connection.albums_by_artist(artist_lookup[0].get('id'), source)
 
             # Build a list of songs to play
-            song_id_list = connection.build_song_list_from_albums(artist_album_lookup, min_song_count)
+            song_id_list = connection.build_song_list_from_albums(artist_album_lookup, min_song_count, source)
             play_queue.clear()
 
-            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]])  # When generating the playlist return the first two tracks.
-            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))  # Create a thread to enqueue the remaining tracks
+            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]], source)  # When generating the playlist return the first two tracks.
+            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
             backgroundProcess.start()  # Start the additional thread
 
             speech = sanitise_speech_output(f'Playing music by: {artist.value}')
@@ -377,11 +355,12 @@ class NaviSonicPlayAlbumByArtist(AbstractRequestHandler):
                 return handler_input.response_builder.response
 
             else:
-                artist_album_lookup = connection.albums_by_artist(artist_lookup[0].get('id'))
+                source = artist_lookup[0].get('source', 'navidrome')
+                artist_album_lookup = connection.albums_by_artist(artist_lookup[0].get('id'), source)
 
                 # Search the list of dictionaries for the requested album
                 # Strings are all converted to lower case to minimise matching errors
-                result = [album_result for album_result in artist_album_lookup if album_result.get('name').lower() == album.value.lower()]
+                result = [album_result for album_result in artist_album_lookup if album_result.get('name', '').lower() == album.value.lower()]
 
                 if not result:
                     text = sanitise_speech_output(f"I couldn't find an album called {album.value} by {artist.value} in the collection.")
@@ -390,12 +369,12 @@ class NaviSonicPlayAlbumByArtist(AbstractRequestHandler):
                     return handler_input.response_builder.response
 
                 # At this point we have found an album that matches
-                song_id_list = connection.build_song_list_from_albums(result, -1)
+                song_id_list = connection.build_song_list_from_albums(result, -1, source)
                 play_queue.clear()
 
                 # Work around the Amazon / Alexa 8 second timeout.
-                controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]])  # When generating the playlist return the first two tracks.
-                backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))  # Create a thread to enqueue the remaining tracks
+                controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]], source)  # When generating the playlist return the first two tracks.
+                backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
                 backgroundProcess.start()  # Start the additional thread
 
                 speech = sanitise_speech_output(f'Playing {album.value} by: {artist.value}')
@@ -420,12 +399,13 @@ class NaviSonicPlayAlbumByArtist(AbstractRequestHandler):
                 return handler_input.response_builder.response
 
             else:
-                song_id_list = connection.build_song_list_from_albums(result, -1)
+                source = result[0].get('source', 'navidrome')
+                song_id_list = connection.build_song_list_from_albums(result, -1, source)
                 play_queue.clear()
 
                 # Work around the Amazon / Alexa 8 second timeout.
-                controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]])  # When generating the playlist return the first two tracks.
-                backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))  # Create a thread to enqueue the remaining tracks
+                controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]], source)  # When generating the playlist return the first two tracks.
+                backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
                 backgroundProcess.start()  # Start the additional thread
 
                 speech = sanitise_speech_output(f'Playing {album.value}')
@@ -468,21 +448,33 @@ class NaviSonicPlaySongByArtist(AbstractRequestHandler):
 
         else:
             artist_id = artist_lookup[0].get('id')
+            source = artist_lookup[0].get('source', 'navidrome')
 
             # Search for song
             song_list = connection.search_song(song.value)
 
-            # Search for song by given artist.
-            song_dets = [item.get('id') for item in song_list if item.get('artistId') == artist_id]
+            if song_list is None:
+                text = sanitise_speech_output(f"I couldn't find a song called {song.value} in the collection.")
+                handler_input.response_builder.speak(text).ask(text)
+                return handler_input.response_builder.response
 
-            if not song_dets:
+            # Search for song by given artist.
+            matching_songs = [(item.get('id'), item.get('source', 'navidrome'))
+                              for item in song_list
+                              if item.get('artistId') == artist_id or
+                              item.get('artist', '').lower() == artist.value.lower()]
+
+            if not matching_songs:
                 text = sanitise_speech_output(f"I couldn't find a song called {song.value} by {artist.value} in the collection.")
                 handler_input.response_builder.speak(text).ask(text)
 
                 return handler_input.response_builder.response
 
             play_queue.clear()
-            controller.enqueue_songs(connection, play_queue, song_dets)
+            # Use the first match's source
+            song_source = matching_songs[0][1] if matching_songs else source
+            song_ids = [m[0] for m in matching_songs]
+            controller.enqueue_songs(connection, play_queue, song_ids, song_source)
 
             speech = sanitise_speech_output(f'Playing {song.value} by {artist.value}')
             logger.info(speech)
@@ -516,22 +508,23 @@ class NaviSonicPlayPlaylist(AbstractRequestHandler):
         # Get the requested playlist
         playlist = get_slot_value_v2(handler_input, 'playlist')
 
-        # Search for a playlist
-        playlist_id = connection.search_playlist(playlist.value)
+        # Search for a playlist (returns tuple of (id, source) or None)
+        playlist_result = connection.search_playlist(playlist.value)
 
-        if playlist_id is None:
+        if playlist_result is None:
             text = sanitise_speech_output("I couldn't find the playlist " + str(playlist.value) + ' in the collection.')
             handler_input.response_builder.speak(text).ask(text)
 
             return handler_input.response_builder.response
 
         else:
-            song_id_list = connection.build_song_list_from_playlist(playlist_id)
+            playlist_id, source = playlist_result
+            song_id_list = connection.build_song_list_from_playlist(playlist_id, source)
             play_queue.clear()
 
             # Work around the Amazon / Alexa 8 second timeout.
-            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]])  # When generating the playlist return the first two tracks.
-            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))  # Create a thread to enqueue the remaining tracks
+            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]], source)  # When generating the playlist return the first two tracks.
+            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
             backgroundProcess.start()  # Start the additional thread
 
             speech = sanitise_speech_output('Playing playlist ' + str(playlist.value))
@@ -568,7 +561,7 @@ class NaviSonicPlayMusicByGenre(AbstractRequestHandler):
 
         song_id_list = connection.build_song_list_from_genre(genre.value, min_song_count)
 
-        if song_id_list is None:
+        if song_id_list is None or len(song_id_list) == 0:
             text = sanitise_speech_output(f"I couldn't find any {genre.value} songs in the collection.")
             handler_input.response_builder.speak(text).ask(text)
 
@@ -579,7 +572,8 @@ class NaviSonicPlayMusicByGenre(AbstractRequestHandler):
             play_queue.clear()
 
             # Work around the Amazon / Alexa 8 second timeout.
-            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]])  # When generating the playlist return the first two tracks.
+            # song_id_list contains (id, source) tuples
+            controller.enqueue_songs(connection, play_queue, song_id_list[:2])  # When generating the playlist return the first two tracks.
             backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))  # Create a thread to enqueue the remaining tracks
             backgroundProcess.start()  # Start the additional thread
 
@@ -614,7 +608,7 @@ class NaviSonicPlayMusicRandom(AbstractRequestHandler):
 
         song_id_list = connection.build_random_song_list(min_song_count)
 
-        if song_id_list is None:
+        if song_id_list is None or len(song_id_list) == 0:
             text = sanitise_speech_output("I couldn't find any songs in the collection.")
             handler_input.response_builder.speak(text).ask(text)
 
@@ -625,7 +619,8 @@ class NaviSonicPlayMusicRandom(AbstractRequestHandler):
             play_queue.clear()
 
             # Work around the Amazon / Alexa 8 second timeout.
-            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]])  # When generating the playlist return the first two tracks.
+            # song_id_list contains (id, source) tuples
+            controller.enqueue_songs(connection, play_queue, song_id_list[:2])  # When generating the playlist return the first two tracks.
             backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))  # Create a thread to enqueue the remaining tracks
             backgroundProcess.start()  # Start the additional thread
 
@@ -660,7 +655,7 @@ class NaviSonicPlayFavouriteSongs(AbstractRequestHandler):
 
         song_id_list = connection.build_song_list_from_favourites()
 
-        if song_id_list is None:
+        if song_id_list is None or len(song_id_list) == 0:
             text = sanitise_speech_output("You don't have any favourite songs in the collection.")
             handler_input.response_builder.speak(text).ask(text)
 
@@ -671,7 +666,8 @@ class NaviSonicPlayFavouriteSongs(AbstractRequestHandler):
             play_queue.clear()
 
             # Work around the Amazon / Alexa 8 second timeout.
-            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]])  # When generating the playlist return the first two tracks.
+            # song_id_list contains (id, source) tuples
+            controller.enqueue_songs(connection, play_queue, song_id_list[:2])  # When generating the playlist return the first two tracks.
             backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))  # Create a thread to enqueue the remaining tracks
             backgroundProcess.start()  # Start the additional thread
 
@@ -742,7 +738,8 @@ class NaviSonicStarSong(AbstractRequestHandler):
         current_track = play_queue.get_current_track()
 
         song_id = current_track.id
-        connection.star_entry(song_id, 'song')
+        source = getattr(current_track, 'source', 'navidrome')
+        connection.star_entry(song_id, 'song', source)
 
         return handler_input.response_builder.response
 
@@ -750,7 +747,7 @@ class NaviSonicStarSong(AbstractRequestHandler):
 class NaviSonicUnstarSong(AbstractRequestHandler):
     """Handle NaviSonicUnstarSong Intent
 
-    Star / favourite the current song
+    Unstar / remove from favourites the current song
     """
 
     def can_handle(self, handler_input: HandlerInput) -> bool:
@@ -762,8 +759,190 @@ class NaviSonicUnstarSong(AbstractRequestHandler):
         current_track = play_queue.get_current_track()
 
         song_id = current_track.id
-        connection.star_entry(song_id, 'song')
-        connection.unstar_entry(song_id, 'song')
+        source = getattr(current_track, 'source', 'navidrome')
+        connection.unstar_entry(song_id, 'song', source)
+
+        return handler_input.response_builder.response
+
+
+class NaviSonicPlaySong(AbstractRequestHandler):
+    """Handle NaviSonicPlaySong Intent
+
+    Play a song by name (without specifying artist)
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('NaviSonicPlaySong')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In NaviSonicPlaySong')
+
+        # Get the requested song
+        song = get_slot_value_v2(handler_input, 'song')
+
+        logger.debug(f'Searching for song: {song.value}')
+
+        # Search for the song
+        song_list = connection.search_song(song.value)
+
+        if song_list is None or len(song_list) == 0:
+            text = sanitise_speech_output(f"I couldn't find the song {song.value} in the collection.")
+            handler_input.response_builder.speak(text).ask(text)
+            return handler_input.response_builder.response
+
+        # Get the best match (first result after sorting)
+        best_match = song_list[0]
+        song_id = best_match.get('id')
+        source = best_match.get('source', 'navidrome')
+        song_title = best_match.get('title', song.value)
+        song_artist = best_match.get('artist', 'Unknown Artist')
+
+        play_queue.clear()
+        controller.enqueue_songs(connection, play_queue, [song_id], source)
+
+        speech = sanitise_speech_output(f'Playing {song_title} by {song_artist}')
+        logger.info(speech)
+        card = {'title': 'AskNavidrome',
+                'text': speech
+                }
+        track_details = play_queue.get_next_track()
+
+        return controller.start_playback('play', speech, card, track_details, handler_input)
+
+
+class NaviSonicLoopOn(AbstractRequestHandler):
+    """Handle NaviSonicLoopOn Intent
+
+    Enable loop mode for the playlist
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return (is_intent_name('NaviSonicLoopOn')(handler_input) or
+                is_intent_name('AMAZON.LoopOnIntent')(handler_input))
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In NaviSonicLoopOn Handler')
+
+        play_queue.set_playback_mode('loop')
+        play_queue.save_original_queue()
+
+        text = sanitise_speech_output('Loop mode enabled')
+        handler_input.response_builder.speak(text)
+
+        return handler_input.response_builder.response
+
+
+class NaviSonicLoopOff(AbstractRequestHandler):
+    """Handle NaviSonicLoopOff Intent
+
+    Disable loop mode
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return (is_intent_name('NaviSonicLoopOff')(handler_input) or
+                is_intent_name('AMAZON.LoopOffIntent')(handler_input))
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In NaviSonicLoopOff Handler')
+
+        play_queue.set_playback_mode('normal')
+
+        text = sanitise_speech_output('Loop mode disabled')
+        handler_input.response_builder.speak(text)
+
+        return handler_input.response_builder.response
+
+
+class NaviSonicRepeatOn(AbstractRequestHandler):
+    """Handle NaviSonicRepeatOn Intent
+
+    Enable repeat one mode (repeat current song)
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return (is_intent_name('NaviSonicRepeatOn')(handler_input) or
+                is_intent_name('AMAZON.RepeatIntent')(handler_input))
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In NaviSonicRepeatOn Handler')
+
+        play_queue.set_playback_mode('repeat_one')
+
+        text = sanitise_speech_output('Repeat mode enabled')
+        handler_input.response_builder.speak(text)
+
+        return handler_input.response_builder.response
+
+
+class NaviSonicRepeatOff(AbstractRequestHandler):
+    """Handle NaviSonicRepeatOff Intent
+
+    Disable repeat mode
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('NaviSonicRepeatOff')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In NaviSonicRepeatOff Handler')
+
+        play_queue.set_playback_mode('normal')
+
+        text = sanitise_speech_output('Repeat mode disabled')
+        handler_input.response_builder.speak(text)
+
+        return handler_input.response_builder.response
+
+
+class NaviSonicShuffleOn(AbstractRequestHandler):
+    """Handle AMAZON.ShuffleOnIntent
+
+    Shuffle the current queue
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('AMAZON.ShuffleOnIntent')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In NaviSonicShuffleOn Handler')
+
+        play_queue.shuffle()
+        play_queue.sync()
+
+        text = sanitise_speech_output('Queue shuffled')
+        handler_input.response_builder.speak(text)
+
+        return handler_input.response_builder.response
+
+
+class NaviSonicShuffleOff(AbstractRequestHandler):
+    """Handle AMAZON.ShuffleOffIntent"""
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('AMAZON.ShuffleOffIntent')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In NaviSonicShuffleOff Handler')
+        # Shuffle off doesn't really do anything in this context
+        return handler_input.response_builder.response
+
+
+class NaviSonicStartOver(AbstractRequestHandler):
+    """Handle AMAZON.StartOverIntent
+
+    Restart the current track from the beginning
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('AMAZON.StartOverIntent')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In NaviSonicStartOver Handler')
+
+        current_track = play_queue.get_current_track()
+        current_track.offset = 0
+
+        return controller.start_playback('play', None, None, current_track, handler_input)
 
         return handler_input.response_builder.response
 
@@ -845,7 +1024,8 @@ class PlaybackFinishedHandler(AbstractRequestHandler):
         # Generate a timestamp in milliseconds for scrobbling
         timestamp_ms = datetime.now().timestamp()
         current_track = play_queue.get_current_track()
-        connection.scrobble(current_track.id, timestamp_ms)
+        source = getattr(current_track, 'source', 'navidrome')
+        connection.scrobble(current_track.id, timestamp_ms, source)
         play_queue.get_next_track()
 
         return handler_input.response_builder.response
@@ -1080,22 +1260,24 @@ def sanitise_speech_output(speech_string: str) -> str:
     return speech_string
 
 
-def queue_worker_thread(connection: object, play_queue: object, song_id_list: list) -> None:
+def queue_worker_thread(connection: object, play_queue: object, song_id_list: list, source: str = 'navidrome') -> None:
     """Media queue worker
 
     This function allows media queues to be populated in the background enabling multithreading
     and increasing skill response times.
 
-    :param connection: A SubSonic API connection object
+    :param connection: A MediaService or API connection object
     :type connection: object
     :param play_queue: A MediaQueue object
     :type play_queue: object
-    :param song_id_list: A list containing Navidrome song IDs
+    :param song_id_list: A list containing song IDs (or (id, source) tuples)
     :type song_id_list: list
+    :param source: Default source for the songs
+    :type source: str
     """
 
     logger.debug('In playlist processing thread!')
-    controller.enqueue_songs(connection, play_queue, song_id_list)
+    controller.enqueue_songs(connection, play_queue, song_id_list, source)
     play_queue.sync()
     logger.debug('Finished playlist processing!')
 
@@ -1108,6 +1290,7 @@ sb.add_request_handler(HelpHandler())
 sb.add_request_handler(NaviSonicPlayMusicByArtist())
 sb.add_request_handler(NaviSonicPlayAlbumByArtist())
 sb.add_request_handler(NaviSonicPlaySongByArtist())
+sb.add_request_handler(NaviSonicPlaySong())
 sb.add_request_handler(NaviSonicPlayPlaylist())
 sb.add_request_handler(NaviSonicPlayFavouriteSongs())
 sb.add_request_handler(NaviSonicPlayMusicByGenre())
@@ -1116,6 +1299,13 @@ sb.add_request_handler(NaviSonicRandomiseQueue())
 sb.add_request_handler(NaviSonicSongDetails())
 sb.add_request_handler(NaviSonicStarSong())
 sb.add_request_handler(NaviSonicUnstarSong())
+sb.add_request_handler(NaviSonicLoopOn())
+sb.add_request_handler(NaviSonicLoopOff())
+sb.add_request_handler(NaviSonicRepeatOn())
+sb.add_request_handler(NaviSonicRepeatOff())
+sb.add_request_handler(NaviSonicShuffleOn())
+sb.add_request_handler(NaviSonicShuffleOff())
+sb.add_request_handler(NaviSonicStartOver())
 
 # Register AutoPlayer Handlers
 sb.add_request_handler(PlaybackStartedHandler())
