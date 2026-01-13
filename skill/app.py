@@ -778,7 +778,14 @@ class NaviSonicPlaySong(AbstractRequestHandler):
         return is_intent_name('NaviSonicPlaySong')(handler_input)
 
     def handle(self, handler_input: HandlerInput) -> Response:
+        global backgroundProcess
         logger.debug('In NaviSonicPlaySong')
+
+        # Check if a background process is already running, if it is then terminate the process
+        # in favour of the new process.
+        if backgroundProcess is not None:
+            backgroundProcess.terminate()
+            backgroundProcess.join()
 
         # Get the requested song
         song = get_slot_value_v2(handler_input, 'song')
@@ -795,13 +802,24 @@ class NaviSonicPlaySong(AbstractRequestHandler):
 
         # Get the best match (first result after sorting)
         best_match = song_list[0]
-        song_id = best_match.get('id')
-        source = best_match.get('source', 'navidrome')
         song_title = best_match.get('title', song.value)
         song_artist = best_match.get('artist', 'Unknown Artist')
 
+        # Build list of song IDs with their sources, limited by min_song_count
+        song_id_list = []
+        for song_item in song_list[:int(min_song_count)]:
+            song_id = song_item.get('id')
+            source = song_item.get('source', 'navidrome')
+            song_id_list.append((song_id, source))
+
         play_queue.clear()
-        controller.enqueue_songs(connection, play_queue, [song_id], source)
+
+        # Work around the Amazon / Alexa 8 second timeout.
+        # Enqueue first two tracks immediately
+        controller.enqueue_songs(connection, play_queue, song_id_list[:2])
+        if len(song_id_list) > 2:
+            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))
+            backgroundProcess.start()
 
         speech = sanitise_speech_output(f'Playing {song_title} by {song_artist}')
         logger.info(speech)
