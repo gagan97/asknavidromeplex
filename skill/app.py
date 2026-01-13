@@ -575,15 +575,25 @@ class NaviSonicShufflePlaylist(AbstractRequestHandler):
             playlist_id, source = playlist_result
             song_id_list = connection.build_song_list_from_playlist(playlist_id, source)
 
+            if not song_id_list or len(song_id_list) == 0:
+                text = sanitise_speech_output("The playlist " + str(playlist.value) + " appears to be empty.")
+                handler_input.response_builder.speak(text).ask(text)
+                return handler_input.response_builder.response
+
             # Shuffle the song list
             random.shuffle(song_id_list)
 
             play_queue.clear()
 
             # Work around the Amazon / Alexa 8 second timeout.
-            controller.enqueue_songs(connection, play_queue, [song_id_list[0], song_id_list[1]], source)  # When generating the playlist return the first two tracks.
-            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
-            backgroundProcess.start()  # Start the additional thread
+            # Handle playlists with fewer than 2 songs
+            initial_songs = song_id_list[:2] if len(song_id_list) >= 2 else song_id_list
+            remaining_songs = song_id_list[2:] if len(song_id_list) > 2 else []
+
+            controller.enqueue_songs(connection, play_queue, initial_songs, source)
+            if remaining_songs:
+                backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, remaining_songs, source))
+                backgroundProcess.start()
 
             speech = sanitise_speech_output('Shuffling and playing playlist ' + str(playlist.value))
             logger.info(speech)
