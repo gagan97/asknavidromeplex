@@ -367,25 +367,29 @@ class PlexConnection:
         if library_key:
             self.logger.debug('Trying hub search with section ID...')
             hub_section_results = self._perform_hub_search_with_section(term, library_key)
+            new_count = 0
             for track in hub_section_results:
                 track_id = track.get('id')
                 if track_id and track_id not in seen_ids:
                     seen_ids.add(track_id)
                     track['_search_method'] = 'hub_section'
                     all_results.append(track)
-            self.logger.debug(f'Hub search with section found {len(hub_section_results)} tracks ({len([t for t in hub_section_results if t.get("id") not in seen_ids])} new)')
+                    new_count += 1
+            self.logger.debug(f'Hub search with section found {len(hub_section_results)} tracks ({new_count} new)')
 
         # Search method 3: Direct library search
         if library_key:
             self.logger.debug('Trying direct library search...')
             direct_results = self._perform_direct_library_search(term, library_key)
+            new_count = 0
             for track in direct_results:
                 track_id = track.get('id')
                 if track_id and track_id not in seen_ids:
                     seen_ids.add(track_id)
                     track['_search_method'] = 'direct'
                     all_results.append(track)
-            self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({len([t for t in direct_results if t.get("id") not in seen_ids])} new)')
+                    new_count += 1
+            self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({new_count} new)')
 
         self.logger.debug(f'Total unique tracks from all search methods: {len(all_results)}')
 
