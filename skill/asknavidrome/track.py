@@ -41,3 +41,5 @@ class Track:
         self.offset: int = offset
         self.previous_id: str = previous_id
         self.source: str = source
+        self.playback_failed: bool = False
+        self.transcoded: bool = False

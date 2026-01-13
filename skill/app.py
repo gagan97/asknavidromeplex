@@ -1134,7 +1134,9 @@ class PreviousPlaybackHandler(AbstractRequestHandler):
 class PlaybackFailedEventHandler(AbstractRequestHandler):
     """AudioPlayer.PlaybackFailed Directive received.
 
-    Logging the error and restarting playing with no output speech.
+    Handles playback failures by:
+    1. For Navidrome tracks that haven't been transcoded: Try transcoded MP3 stream
+    2. For already transcoded tracks or Plex tracks: Skip to the next track
     """
 
     def can_handle(self, handler_input: HandlerInput) -> bool:
@@ -1145,16 +1147,37 @@ class PlaybackFailedEventHandler(AbstractRequestHandler):
 
         current_track = play_queue.get_current_track()
         song_id = current_track.id
+        source = getattr(current_track, 'source', 'navidrome')
+        transcoded = getattr(current_track, 'transcoded', False)
 
         # Log failure and track ID
         logger.error(f'Playback Failed: {handler_input.request_envelope.request.error}')
         logger.error(f'Failed playing track with ID: {song_id}')
 
-        # Skip to the next track instead of stopping
-        track_details = play_queue.get_next_track()
+        # Check if we can try transcoding (only for Navidrome and not already transcoded)
+        if source == 'navidrome' and not transcoded:
+            logger.info(f'Attempting to play transcoded stream for track: {song_id}')
 
-        # Set the offset to 0 as we are skipping we want to start at the beginning
-        track_details.offset = 0
+            # Get transcoded URI
+            transcoded_uri = connection.get_transcoded_song_uri(song_id, source)
+
+            if transcoded_uri:
+                # Update the current track with transcoded URI
+                play_queue.mark_current_track_transcoded(transcoded_uri)
+                track_details = play_queue.get_current_track()
+
+                logger.info(f'Playing transcoded track: {track_details.title} by: {track_details.artist}')
+                return controller.start_playback('play', None, None, track_details, handler_input)
+
+        # Either not Navidrome, already transcoded, or transcoding failed
+        # Skip to the next track
+        logger.info('Skipping to next track after playback failure')
+        track_details = play_queue.skip_current_track()
+
+        # Check if we have a valid track
+        if not track_details.id:
+            logger.warning('No more tracks available after playback failure')
+            return handler_input.response_builder.response
 
         return controller.start_playback('play', None, None, track_details, handler_input)
 
