@@ -296,7 +296,7 @@ class PlexConnection:
         :param list tracks: List of track dictionaries
         :param str search_term: The search term (title)
         :param str search_artist: Optional artist name
-        :return:  Sorted list of best matching tracks
+        :return: Sorted list of best matching tracks
         :rtype: list
         """
         if not tracks:
