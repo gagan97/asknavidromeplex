@@ -208,6 +208,9 @@
                     "name": "NaviSonicLoopOn",
                     "slots": [],
                     "samples": [
+                        "play on loop",
+                        "play in a loop",
+                        "play playlist on loop",
                         "loop",
                         "loop on",
                         "turn on loop",
@@ -222,6 +225,7 @@
                     "name": "NaviSonicLoopOff",
                     "slots": [],
                     "samples": [
+                        "stop playing on loop",
                         "loop off",
                         "turn off loop",
                         "disable loop",
@@ -233,6 +237,8 @@
                     "name": "NaviSonicRepeatOn",
                     "slots": [],
                     "samples": [
+                        "play on repeat",
+                        "play this on repeat",
                         "repeat",
                         "repeat on",
                         "turn on repeat",
@@ -247,6 +253,7 @@
                     "name": "NaviSonicRepeatOff",
                     "slots": [],
                     "samples": [
+                        "stop playing on repeat",
                         "repeat off",
                         "turn off repeat",
                         "disable repeat",

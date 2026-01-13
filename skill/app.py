@@ -46,18 +46,21 @@ logger.addHandler(handler)
 logger.info('AskNavidrome 1.0 - Multi-source media player!')
 logger.debug('Getting configuration from the environment...')
 
-# Required configuration
 try:
     if 'NAVI_SKILL_ID' in os.environ:
+        # Set skill ID, this is available on the Alexa Developer Console
+        # if this is not set the web service will respond to any skill.
         sb.skill_id = os.getenv('NAVI_SKILL_ID')
+
         logger.info(f'Skill ID set to: {sb.skill_id}')
+
     else:
         raise NameError
 except NameError as err:
     logger.error(f'The Alexa skill ID was not found! {err}')
     raise
 
-# Song count configuration
+# Song count configuration (defaults to 50 if not specified)
 min_song_count = os.getenv('NAVI_SONG_COUNT', '50')
 logger.info(f'Minimum song count is set to: {min_song_count}')
 
