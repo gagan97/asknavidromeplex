@@ -870,20 +870,47 @@ class NaviSonicPlaySong(AbstractRequestHandler):
         song_title = best_match.get('title', song.value)
         song_artist = best_match.get('artist', 'Unknown Artist')
 
-        # Build list of song IDs with their sources, limited by min_song_count
+        # Build list of song IDs with their sources from search results
         song_id_list = []
+        search_song_ids = set()  # Track IDs to avoid duplicates
         for song_item in song_list[:int(min_song_count)]:
             song_id = song_item.get('id')
             source = song_item.get('source', 'navidrome')
             song_id_list.append((song_id, source))
+            search_song_ids.add(song_id)
+
+        # If we don't have enough songs, fill up with random songs
+        target_count = int(min_song_count)
+        if len(song_id_list) < target_count:
+            remaining_count = target_count - len(song_id_list)
+            logger.debug(f'Search returned {len(song_id_list)} songs, filling remaining {remaining_count} with random songs')
+
+            random_songs = connection.build_random_song_list(remaining_count * 2)  # Request extra to account for duplicates
+            if random_songs:
+                for random_song in random_songs:
+                    if len(song_id_list) >= target_count:
+                        break
+                    # Handle both tuple and non-tuple formats
+                    if isinstance(random_song, tuple):
+                        r_id, r_source = random_song
+                    else:
+                        r_id, r_source = random_song, 'navidrome'
+
+                    # Avoid duplicates
+                    if r_id not in search_song_ids:
+                        song_id_list.append((r_id, r_source))
+                        search_song_ids.add(r_id)
 
         play_queue.clear()
 
         # Work around the Amazon / Alexa 8 second timeout.
         # Enqueue first two tracks immediately
-        controller.enqueue_songs(connection, play_queue, song_id_list[:2])
-        if len(song_id_list) > 2:
-            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:]))
+        initial_songs = song_id_list[:2] if len(song_id_list) >= 2 else song_id_list
+        remaining_songs = song_id_list[2:] if len(song_id_list) > 2 else []
+
+        controller.enqueue_songs(connection, play_queue, initial_songs)
+        if remaining_songs:
+            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, remaining_songs))
             backgroundProcess.start()
 
         speech = sanitise_speech_output(f'Playing {song_title} by {song_artist}')
