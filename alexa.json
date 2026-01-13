@@ -74,12 +74,15 @@
                     "slots": [
                         {
                             "name": "playlist",
-                            "type": "playlist_names"
+                            "type": "AMAZON.SearchQuery"
                         }
                     ],
                     "samples": [
                         "Play the {playlist} playlist",
-                        "Start the {playlist} playlist"
+                        "Start the {playlist} playlist",
+                        "Play playlist {playlist}",
+                        "Play my {playlist} playlist",
+                        "Play {playlist} playlist"
                     ]
                 },
                 {
@@ -286,28 +289,7 @@
                     "samples": []
                 }
             ],
-            "types": [
-                {
-                    "name": "playlist_names",
-                    "values": [
-                        {
-                            "name": {
-                                "value": "Background Music"
-                            }
-                        },
-                        {
-                            "name": {
-                                "value": "Rock Songs"
-                            }
-                        },
-                        {
-                            "name": {
-                                "value": "Work Music"
-                            }
-                        }
-                    ]
-                }
-            ]
+            "types": []
         }
     }
 }
