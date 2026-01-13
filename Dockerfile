@@ -10,7 +10,7 @@ RUN python3 -m venv env
 
 RUN git clone https://github.com/gagan97/asknavidromeplex.git
 
-WORKDIR /opt/asknavidrome
+WORKDIR /opt/asknavidromeplex
 
 RUN source ../env/bin/activate && pip --no-cache-dir install wheel && pip --no-cache-dir install -r skill/requirements-docker.txt
 
@@ -22,9 +22,9 @@ LABEL org.opencontainers.image.source=https://github.com/gagan97/asknavidromeple
 RUN apk add python3
 
 COPY --from=build /opt/env /opt/env
-COPY --from=build /opt/asknavidrome/skill /opt/asknavidrome/
+COPY --from=build /opt/asknavidromeplex/skill /opt/asknavidromeplex/
 
-WORKDIR /opt/asknavidrome
+WORKDIR /opt/asknavidromeplex
 
 # Activate Python Virtual Environment
 ENV PATH="/opt/env/bin:$PATH"
