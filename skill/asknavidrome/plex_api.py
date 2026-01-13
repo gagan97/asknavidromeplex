@@ -1,17 +1,19 @@
 import logging
 import urllib.parse
 from typing import Union
+from difflib import SequenceMatcher
 import requests
 
 
 class PlexConnection:
     """Class with methods to interact with Plex Media Server"""
 
-    def __init__(self, server_url: str, token: str, port: int = 32400) -> None:
+    def __init__(self, server_url: str, token: str, port: int = 32400, prefer_high_bitrate: bool = False) -> None:
         """
         :param str server_url: The URL of the Plex Media Server
         :param str token: Plex authentication token (X-Plex-Token)
         :param int port: Port the Plex server is listening on (default 32400)
+        :param bool prefer_high_bitrate: Whether to prefer higher bitrate tracks when multiple matches exist
         :return: None
         """
 
@@ -25,6 +27,8 @@ class PlexConnection:
             'Accept': 'application/json',
             'X-Plex-Token': self.token
         }
+        self.prefer_high_bitrate = prefer_high_bitrate
+        self._music_library_key = None  # Cache the music library key
 
         self.logger.debug('PlexConnection initialized')
 
@@ -61,17 +65,336 @@ class PlexConnection:
 
         self.logger.debug('In function _get_music_library_key()')
 
+        # Return cached value if available
+        if self._music_library_key:
+            return self._music_library_key
+
         try:
             response = requests.get(f"{self.base_url}/library/sections", headers=self.headers, timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 for directory in data.get('MediaContainer', {}).get('Directory', []):
                     if directory.get('type') == 'artist':
-                        return directory.get('key')
+                        self._music_library_key = directory.get('key')
+                        return self._music_library_key
         except requests.RequestException as e:
             self.logger.error(f'Error getting music library: {e}')
 
         return None
+
+    def _fuzzy_match(self, s1: str, s2: str) -> float:
+        """Calculate similarity between two strings using SequenceMatcher
+
+        :param str s1: First string
+        :param str s2: Second string
+        :return: Similarity ratio (0.0 to 1.0)
+        :rtype: float
+        """
+        if not s1 or not s2:
+            return 0.0
+        return SequenceMatcher(None, s1.lower().strip(), s2.lower().strip()).ratio()
+
+    def _normalize_string(self, s: str) -> str:
+        """Normalize string for better matching
+
+        :param str s: Input string
+        :return: Normalized string
+        :rtype: str
+        """
+        if not s:
+            return ""
+        s = s.lower().strip()
+        # Remove 'the' at the start
+        if s.startswith('the '):
+            s = s[4:]
+        return s
+
+    def _extract_track_hub(self, json_data: dict) -> Union[dict, None]:
+        """Extract only the track hub from search results
+
+        :param dict json_data: The JSON data from the search response
+        :return: The track hub data or None if not found
+        :rtype: dict | None
+        """
+        if 'MediaContainer' in json_data and 'Hub' in json_data['MediaContainer']:
+            hubs = json_data['MediaContainer']['Hub']
+            for hub in hubs:
+                if hub.get('type') == 'track' or hub.get('hubIdentifier') == 'track':
+                    return hub
+        return None
+
+    def _parse_track_metadata(self, metadata_list: list) -> list:
+        """Parse track metadata into a standardized format
+
+        :param list metadata_list: List of track metadata from Plex API
+        :return: List of standardized track dictionaries
+        :rtype: list
+        """
+        songs = []
+        for m in metadata_list:
+            media = m.get('Media', [{}])[0] if m.get('Media') else {}
+            duration_ms = m.get('duration') or 0
+            songs.append({
+                'id': m.get('ratingKey'),
+                'title': m.get('title'),
+                'artist': m.get('grandparentTitle'),
+                'originalArtist': m.get('originalTitle'),  # Multi-artist info
+                'artistId': m.get('grandparentRatingKey'),
+                'album': m.get('parentTitle'),
+                'albumId': m.get('parentRatingKey'),
+                'duration': duration_ms // 1000 if duration_ms else 0,
+                'bitRate': media.get('bitrate', 0),
+                'audioCodec': media.get('audioCodec', ''),
+                'audioChannels': media.get('audioChannels', 0),
+                'track': m.get('index', 0),
+                'year': m.get('year', 0),
+                'genre': m.get('Genre', [{}])[0].get('tag', '') if m.get('Genre') else '',
+                'guid': m.get('guid', ''),
+                'Guid': m.get('Guid', [])  # Full GUID list for matching
+            })
+        return songs
+
+    def _perform_hub_search(self, term: str, limit: int = 20) -> list:
+        """Perform a hub search (global search across all content)
+
+        :param str term: The search term
+        :param int limit: Maximum number of results
+        :return: List of track results
+        :rtype: list
+        """
+        self.logger.debug(f'Performing hub search for: {term}')
+
+        try:
+            encoded_term = urllib.parse.quote(term)
+            response = requests.get(
+                f"{self.base_url}/hubs/search?query={encoded_term}&limit={limit}",
+                headers=self.headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                track_hub = self._extract_track_hub(data)
+                if track_hub and 'Metadata' in track_hub:
+                    return self._parse_track_metadata(track_hub['Metadata'])
+        except requests.RequestException as e:
+            self.logger.error(f'Error in hub search: {e}')
+
+        return []
+
+    def _perform_hub_search_with_section(self, term: str, section_id: str, limit: int = 20) -> list:
+        """Perform a hub search scoped to a specific library section
+
+        :param str term: The search term
+        :param str section_id: The library section ID to search in
+        :param int limit: Maximum number of results
+        :return: List of track results
+        :rtype: list
+        """
+        self.logger.debug(f'Performing hub search with section {section_id} for: {term}')
+
+        try:
+            encoded_term = urllib.parse.quote(term)
+            response = requests.get(
+                f"{self.base_url}/hubs/search?query={encoded_term}&sectionId={section_id}&limit={limit}",
+                headers=self.headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                track_hub = self._extract_track_hub(data)
+                if track_hub and 'Metadata' in track_hub:
+                    return self._parse_track_metadata(track_hub['Metadata'])
+        except requests.RequestException as e:
+            self.logger.error(f'Error in hub search with section: {e}')
+
+        return []
+
+    def _perform_direct_library_search(self, term: str, section_id: str, limit: int = 20) -> list:
+        """Perform a direct library search using /library/sections/{id}/all endpoint
+
+        This search method queries the library directly with a title filter,
+        which can find tracks that hub search might miss.
+
+        :param str term: The search term (track title)
+        :param str section_id: The library section ID to search in
+        :param int limit: Maximum number of results
+        :return: List of track results
+        :rtype: list
+        """
+        self.logger.debug(f'Performing direct library search for: {term}')
+
+        try:
+            encoded_term = urllib.parse.quote(term)
+            response = requests.get(
+                f"{self.base_url}/library/sections/{section_id}/all?title={encoded_term}&type=10&limit={limit}",
+                headers=self.headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                metadata = data.get('MediaContainer', {}).get('Metadata', [])
+                if metadata:
+                    return self._parse_track_metadata(metadata)
+        except requests.RequestException as e:
+            self.logger.error(f'Error in direct library search: {e}')
+
+        return []
+
+    def _calculate_match_score(self, track: dict, search_term: str, search_artist: str = None) -> float:
+        """Calculate a match score for a track based on title and artist similarity
+
+        :param dict track: Track dictionary
+        :param str search_term: The search term (title)
+        :param str search_artist: Optional artist name to match
+        :return: Match score (0.0 to 1.0, with bonuses up to ~1.5)
+        :rtype: float
+        """
+        # Title matching
+        track_title = self._normalize_string(track.get('title', ''))
+        normalized_term = self._normalize_string(search_term)
+
+        # Exact title match gets highest priority
+        if track_title == normalized_term:
+            score = 1.0
+        else:
+            score = self._fuzzy_match(track_title, normalized_term)
+
+        # Boost score for prefix matches
+        if track_title.startswith(normalized_term) or normalized_term.startswith(track_title):
+            score += 0.1
+
+        # Artist matching bonus (if artist provided)
+        if search_artist:
+            normalized_artist = self._normalize_string(search_artist)
+            track_artist = self._normalize_string(track.get('artist', ''))
+            original_artist = self._normalize_string(track.get('originalArtist', ''))
+
+            # Check both artist and originalArtist fields
+            artist_score = max(
+                self._fuzzy_match(track_artist, normalized_artist),
+                self._fuzzy_match(original_artist, normalized_artist) if original_artist else 0.0
+            )
+
+            # Add artist match as a bonus (up to 0.3)
+            score += artist_score * 0.3
+
+        # Bitrate bonus when prefer_high_bitrate is enabled
+        if self.prefer_high_bitrate:
+            bitrate = track.get('bitRate', 0) or 0
+            # Normalize bitrate bonus (max ~0.1 bonus for very high bitrates like 1411 kbps)
+            if bitrate > 0:
+                score += min(bitrate / 15000, 0.1)
+
+        return score
+
+    def _select_best_tracks(self, tracks: list, search_term: str, search_artist: str = None) -> list:
+        """Select and sort tracks by match score, handling duplicates based on bitrate preference
+
+        :param list tracks: List of track dictionaries
+        :param str search_term: The search term (title)
+        :param str search_artist: Optional artist name
+        :return: Sorted list of best matching tracks
+        :rtype: list
+        """
+        if not tracks:
+            return []
+
+        # Calculate scores and attach to tracks
+        scored_tracks = []
+        for track in tracks:
+            score = self._calculate_match_score(track, search_term, search_artist)
+            scored_tracks.append((score, track))
+
+        # Sort by score descending
+        scored_tracks.sort(key=lambda x: x[0], reverse=True)
+
+        # If prefer_high_bitrate, deduplicate by title+artist, keeping highest bitrate
+        if self.prefer_high_bitrate:
+            track_map = {}
+            for score, track in scored_tracks:
+                key = (
+                    self._normalize_string(track.get('title', '')),
+                    self._normalize_string(track.get('artist', ''))
+                )
+                existing = track_map.get(key)
+                if not existing:
+                    track_map[key] = (score, track)
+                else:
+                    # Keep the one with higher bitrate (if scores are similar)
+                    existing_bitrate = existing[1].get('bitRate', 0) or 0
+                    new_bitrate = track.get('bitRate', 0) or 0
+                    if new_bitrate > existing_bitrate:
+                        track_map[key] = (score, track)
+
+            scored_tracks = list(track_map.values())
+            scored_tracks.sort(key=lambda x: x[0], reverse=True)
+
+        return [track for score, track in scored_tracks]
+
+    def _aggregate_search_results(self, term: str, artist: str = None) -> list:
+        """Aggregate results from multiple search methods and return best matches
+
+        This method tries multiple search approaches and combines results:
+        1. Hub search (global)
+        2. Hub search with section ID (scoped to music library)
+        3. Direct library search (title-based)
+
+        :param str term: The search term
+        :param str artist: Optional artist name for better matching
+        :return: Aggregated and sorted list of tracks
+        :rtype: list
+        """
+        all_results = []
+        seen_ids = set()
+
+        library_key = self._get_music_library_key()
+
+        # Search method 1: Hub search (global)
+        self.logger.debug('Trying hub search...')
+        hub_results = self._perform_hub_search(term)
+        for track in hub_results:
+            track_id = track.get('id')
+            if track_id and track_id not in seen_ids:
+                seen_ids.add(track_id)
+                track['_search_method'] = 'hub'
+                all_results.append(track)
+        self.logger.debug(f'Hub search found {len(hub_results)} tracks')
+
+        # Search method 2: Hub search with section ID
+        if library_key:
+            self.logger.debug('Trying hub search with section ID...')
+            hub_section_results = self._perform_hub_search_with_section(term, library_key)
+            new_count = 0
+            for track in hub_section_results:
+                track_id = track.get('id')
+                if track_id and track_id not in seen_ids:
+                    seen_ids.add(track_id)
+                    track['_search_method'] = 'hub_section'
+                    all_results.append(track)
+                    new_count += 1
+            self.logger.debug(f'Hub search with section found {len(hub_section_results)} tracks ({new_count} new)')
+
+        # Search method 3: Direct library search
+        if library_key:
+            self.logger.debug('Trying direct library search...')
+            direct_results = self._perform_direct_library_search(term, library_key)
+            new_count = 0
+            for track in direct_results:
+                track_id = track.get('id')
+                if track_id and track_id not in seen_ids:
+                    seen_ids.add(track_id)
+                    track['_search_method'] = 'direct'
+                    all_results.append(track)
+                    new_count += 1
+            self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({new_count} new)')
+
+        self.logger.debug(f'Total unique tracks from all search methods: {len(all_results)}')
+
+        # Score and sort all results
+        return self._select_best_tracks(all_results, term, artist)
 
     def search_artist(self, term: str) -> Union[list, None]:
         """Search for an artist in Plex
@@ -147,15 +470,41 @@ class PlexConnection:
 
         return None
 
-    def search_song(self, term: str) -> Union[list, None]:
-        """Search for a song in Plex
+    def search_song(self, term: str, artist: str = None) -> Union[list, None]:
+        """Search for a song in Plex using multiple search methods
+
+        This method aggregates results from:
+        - Hub search (global)
+        - Hub search with section ID (scoped to music library)
+        - Direct library search (title-based)
+
+        Results are scored based on title/artist match and optionally bitrate.
+
+        :param str term: The name of the song
+        :param str artist: Optional artist name for better matching
+        :return: A list of songs sorted by relevance, or None if no results
+        :rtype: list | None
+        """
+
+        self.logger.debug(f'In function search_song() - term: {term}, artist: {artist}')
+
+        results = self._aggregate_search_results(term, artist)
+
+        if results:
+            self.logger.debug(f'Found {len(results)} songs for term: {term}')
+            return results
+
+        return None
+
+    def search_song_simple(self, term: str) -> Union[list, None]:
+        """Search for a song using only hub search (original simple method)
 
         :param str term: The name of the song
         :return: A list of songs or None if no results are found
         :rtype: list | None
         """
 
-        self.logger.debug('In function search_song()')
+        self.logger.debug('In function search_song_simple()')
 
         try:
             encoded_term = urllib.parse.quote(term)
@@ -173,23 +522,7 @@ class PlexConnection:
                     if hub.get('type') == 'track':
                         metadata = hub.get('Metadata', [])
                         if metadata:
-                            songs = []
-                            for m in metadata:
-                                media = m.get('Media', [{}])[0] if m.get('Media') else {}
-                                duration_ms = m.get('duration') or 0
-                                songs.append({
-                                    'id': m.get('ratingKey'),
-                                    'title': m.get('title'),
-                                    'artist': m.get('grandparentTitle'),
-                                    'artistId': m.get('grandparentRatingKey'),
-                                    'album': m.get('parentTitle'),
-                                    'albumId': m.get('parentRatingKey'),
-                                    'duration': duration_ms // 1000 if duration_ms else 0,
-                                    'bitRate': media.get('bitrate', 0),
-                                    'track': m.get('index', 0),
-                                    'year': m.get('year', 0),
-                                    'genre': m.get('Genre', [{}])[0].get('tag', '') if m.get('Genre') else ''
-                                })
+                            songs = self._parse_track_metadata(metadata)
                             self.logger.debug(f'Found {len(songs)} songs for term: {term}')
                             return songs
         except requests.RequestException as e:
