@@ -612,6 +612,11 @@ class NaviSonicPlayMusicRandom(AbstractRequestHandler):
         song_id_list = connection.build_random_song_list(min_song_count)
 
         if song_id_list is None or len(song_id_list) == 0:
+            logger.warning(
+                "Unable to retrieve random songs: build_random_song_list(%s) returned %r",
+                min_song_count,
+                song_id_list,
+            )
             text = sanitise_speech_output("I couldn't find any songs in the collection.")
             handler_input.response_builder.speak(text).ask(text)
 
