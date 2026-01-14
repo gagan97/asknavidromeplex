@@ -292,16 +292,19 @@ class PlexConnection:
             )
             
             # Extract track results from the search response
-            if hasattr(search_response, 'raw_response') and hasattr(search_response.raw_response, 'json'):
-                json_data = search_response.raw_response.json()
-                
-                # Extract track hub data
-                track_hub = self._extract_track_hub(json_data)
-                
-                if track_hub and 'Metadata' in track_hub:
-                    tracks = self._parse_track_metadata(track_hub['Metadata'])
-                    self.logger.debug(f'API client search found {len(tracks)} tracks')
-                    return tracks
+            if search_response and hasattr(search_response, 'raw_response'):
+                try:
+                    json_data = search_response.raw_response.json()
+                    
+                    # Extract track hub data
+                    track_hub = self._extract_track_hub(json_data)
+                    
+                    if track_hub and 'Metadata' in track_hub:
+                        tracks = self._parse_track_metadata(track_hub['Metadata'])
+                        self.logger.debug(f'API client search found {len(tracks)} tracks')
+                        return tracks
+                except (AttributeError, ValueError) as e:
+                    self.logger.error(f'Error parsing API client search response: {e}')
         except Exception as e:
             self.logger.error(f'Error in API client search: {e}')
         

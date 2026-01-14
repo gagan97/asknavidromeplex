@@ -37,11 +37,10 @@ class SearchAPI:
         try:
             encoded_query = urllib.parse.quote(query)
             
-            # Build URL with section_id if provided
+            # Build URL with optional section_id parameter
+            url = f"{self.server_url}/hubs/search?query={encoded_query}&limit={limit}"
             if section_id is not None:
-                url = f"{self.server_url}/hubs/search?query={encoded_query}&sectionId={section_id}&limit={limit}"
-            else:
-                url = f"{self.server_url}/hubs/search?query={encoded_query}&limit={limit}"
+                url += f"&sectionId={section_id}"
             
             response = requests.get(url, headers=self.headers, timeout=10)
             
