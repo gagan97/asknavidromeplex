@@ -110,8 +110,13 @@ class PlexConnection:
                 # If MUSIC_SECTION env var is set, look for section by name
                 if music_section_name:
                     self.logger.info(f'Looking for music library section by name: {music_section_name}')
-                    self._music_library_key = self._plex_sdk.library.section(music_section_name)
-                    return self._music_library_key
+                    for directory in directories:
+                        if directory.get('title', '').lower() == music_section_name.lower():
+                            self._music_library_key = directory.get('key')
+                            self.logger.debug(f'Found music library "{directory.get("title")}" with key {self._music_library_key}')
+                            return self._music_library_key
+                    # Section name not found, log warning and fall through to type-based search
+                    self.logger.warning(f'Music section "{music_section_name}" not found, falling back to type-based search')
                 
                 # Fallback: Find first music library by type
                 for directory in directories:
