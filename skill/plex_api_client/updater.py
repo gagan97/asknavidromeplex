@@ -8,39 +8,24 @@ from plex_api_client.types import OptionalNullable, UNSET
 from typing import Any, Mapping, Optional
 
 
-class Search(BaseSDK):
-    r"""API Calls that perform search operations with Plex Media Server"""
+class Updater(BaseSDK):
+    r"""This describes the API for searching and applying updates to the Plex Media Server.
+    Updates to the status can be observed via the Event API.
 
-    def perform_search(
+    """
+
+    def get_update_status(
         self,
         *,
-        query: str,
-        section_id: Optional[int] = None,
-        limit: Optional[int] = 3,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.PerformSearchResponse:
-        r"""Perform a search
+    ) -> operations.GetUpdateStatusResponse:
+        r"""Querying status of updates
 
-        This endpoint performs a search across all library sections, or a single section, and returns matches as hubs, split up by type. It performs spell checking, looks for partial matches, and orders the hubs based on quality of results. In addition, based on matches, it will return other related matches (e.g. for a genre match, it may return movies in that genre, or for an actor match, movies with that actor).
+        Querying status of updates
 
-        In the response's items, the following extra attributes are returned to further describe or disambiguate the result:
-
-        - `reason`: The reason for the result, if not because of a direct search term match; can be either:
-        - `section`: There are multiple identical results from different sections.
-        - `originalTitle`: There was a search term match from the original title field (sometimes those can be very different or in a foreign language).
-        - `<hub identifier>`: If the reason for the result is due to a result in another hub, the source hub identifier is returned. For example, if the search is for \"dylan\" then Bob Dylan may be returned as an artist result, an a few of his albums returned as album results with a reason code of `artist` (the identifier of that particular hub). Or if the search is for \"arnold\", there might be movie results returned with a reason of `actor`
-        - `reasonTitle`: The string associated with the reason code. For a section reason, it'll be the section name; For a hub identifier, it'll be a string associated with the match (e.g. `Arnold Schwarzenegger` for movies which were returned because the search was for \"arnold\").
-        - `reasonID`: The ID of the item associated with the reason for the result. This might be a section ID, a tag ID, an artist ID, or a show ID.
-
-        This request is intended to be very fast, and called as the user types.
-
-
-        :param query: The query term
-        :param section_id: This gives context to the search, and can result in re-ordering of search result hubs
-        :param limit: The number of items to return per hub
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -55,19 +40,12 @@ class Search(BaseSDK):
             base_url = server_url
         else:
             base_url = self._get_url(base_url, url_variables)
-
-        request = operations.PerformSearchRequest(
-            query=query,
-            section_id=section_id,
-            limit=limit,
-        )
-
         req = self._build_request(
             method="GET",
-            path="/hubs/search",
+            path="/updater/status",
             base_url=base_url,
             url_variables=url_variables,
-            request=request,
+            request=None,
             request_body_required=False,
             request_has_path_params=False,
             request_has_query_params=True,
@@ -89,7 +67,7 @@ class Search(BaseSDK):
         http_res = self.do_request(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="performSearch",
+                operation_id="getUpdateStatus",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -99,24 +77,27 @@ class Search(BaseSDK):
         )
 
         response_data: Any = None
-        if utils.match_response(http_res, "200", "*"):
-            return operations.PerformSearchResponse(
+        if utils.match_response(http_res, "200", "application/json"):
+            return operations.GetUpdateStatusResponse(
+                object=utils.unmarshal_json(
+                    http_res.text, Optional[operations.GetUpdateStatusResponseBody]
+                ),
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformSearchBadRequestData
+                http_res.text, errors.GetUpdateStatusBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.PerformSearchBadRequest(data=response_data)
+            raise errors.GetUpdateStatusBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformSearchUnauthorizedData
+                http_res.text, errors.GetUpdateStatusUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.PerformSearchUnauthorized(data=response_data)
+            raise errors.GetUpdateStatusUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = utils.stream_to_text(http_res)
             raise errors.SDKError(
@@ -137,36 +118,18 @@ class Search(BaseSDK):
             http_res,
         )
 
-    async def perform_search_async(
+    async def get_update_status_async(
         self,
         *,
-        query: str,
-        section_id: Optional[int] = None,
-        limit: Optional[int] = 3,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.PerformSearchResponse:
-        r"""Perform a search
+    ) -> operations.GetUpdateStatusResponse:
+        r"""Querying status of updates
 
-        This endpoint performs a search across all library sections, or a single section, and returns matches as hubs, split up by type. It performs spell checking, looks for partial matches, and orders the hubs based on quality of results. In addition, based on matches, it will return other related matches (e.g. for a genre match, it may return movies in that genre, or for an actor match, movies with that actor).
+        Querying status of updates
 
-        In the response's items, the following extra attributes are returned to further describe or disambiguate the result:
-
-        - `reason`: The reason for the result, if not because of a direct search term match; can be either:
-        - `section`: There are multiple identical results from different sections.
-        - `originalTitle`: There was a search term match from the original title field (sometimes those can be very different or in a foreign language).
-        - `<hub identifier>`: If the reason for the result is due to a result in another hub, the source hub identifier is returned. For example, if the search is for \"dylan\" then Bob Dylan may be returned as an artist result, an a few of his albums returned as album results with a reason code of `artist` (the identifier of that particular hub). Or if the search is for \"arnold\", there might be movie results returned with a reason of `actor`
-        - `reasonTitle`: The string associated with the reason code. For a section reason, it'll be the section name; For a hub identifier, it'll be a string associated with the match (e.g. `Arnold Schwarzenegger` for movies which were returned because the search was for \"arnold\").
-        - `reasonID`: The ID of the item associated with the reason for the result. This might be a section ID, a tag ID, an artist ID, or a show ID.
-
-        This request is intended to be very fast, and called as the user types.
-
-
-        :param query: The query term
-        :param section_id: This gives context to the search, and can result in re-ordering of search result hubs
-        :param limit: The number of items to return per hub
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -181,19 +144,12 @@ class Search(BaseSDK):
             base_url = server_url
         else:
             base_url = self._get_url(base_url, url_variables)
-
-        request = operations.PerformSearchRequest(
-            query=query,
-            section_id=section_id,
-            limit=limit,
-        )
-
         req = self._build_request_async(
             method="GET",
-            path="/hubs/search",
+            path="/updater/status",
             base_url=base_url,
             url_variables=url_variables,
-            request=request,
+            request=None,
             request_body_required=False,
             request_has_path_params=False,
             request_has_query_params=True,
@@ -215,7 +171,7 @@ class Search(BaseSDK):
         http_res = await self.do_request_async(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="performSearch",
+                operation_id="getUpdateStatus",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -225,24 +181,27 @@ class Search(BaseSDK):
         )
 
         response_data: Any = None
-        if utils.match_response(http_res, "200", "*"):
-            return operations.PerformSearchResponse(
+        if utils.match_response(http_res, "200", "application/json"):
+            return operations.GetUpdateStatusResponse(
+                object=utils.unmarshal_json(
+                    http_res.text, Optional[operations.GetUpdateStatusResponseBody]
+                ),
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformSearchBadRequestData
+                http_res.text, errors.GetUpdateStatusBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.PerformSearchBadRequest(data=response_data)
+            raise errors.GetUpdateStatusBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformSearchUnauthorizedData
+                http_res.text, errors.GetUpdateStatusUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.PerformSearchUnauthorized(data=response_data)
+            raise errors.GetUpdateStatusUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = await utils.stream_to_text_async(http_res)
             raise errors.SDKError(
@@ -263,28 +222,20 @@ class Search(BaseSDK):
             http_res,
         )
 
-    def perform_voice_search(
+    def check_for_updates(
         self,
         *,
-        query: str,
-        section_id: Optional[float] = None,
-        limit: Optional[float] = 3,
+        download: Optional[operations.Download] = None,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.PerformVoiceSearchResponse:
-        r"""Perform a voice search
+    ) -> operations.CheckForUpdatesResponse:
+        r"""Checking for updates
 
-        This endpoint performs a search specifically tailored towards voice or other imprecise input which may work badly with the substring and spell-checking heuristics used by the `/hubs/search` endpoint.
-        It uses a [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) heuristic to search titles, and as such is much slower than the other search endpoint.
-        Whenever possible, clients should limit the search to the appropriate type.
-        Results, as well as their containing per-type hubs, contain a `distance` attribute which can be used to judge result quality.
+        Checking for updates
 
-
-        :param query: The query term
-        :param section_id: This gives context to the search, and can result in re-ordering of search result hubs
-        :param limit: The number of items to return per hub
+        :param download: Indicate that you want to start download any updates found.
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -300,15 +251,13 @@ class Search(BaseSDK):
         else:
             base_url = self._get_url(base_url, url_variables)
 
-        request = operations.PerformVoiceSearchRequest(
-            query=query,
-            section_id=section_id,
-            limit=limit,
+        request = operations.CheckForUpdatesRequest(
+            download=download,
         )
 
         req = self._build_request(
-            method="GET",
-            path="/hubs/search/voice",
+            method="PUT",
+            path="/updater/check",
             base_url=base_url,
             url_variables=url_variables,
             request=request,
@@ -333,7 +282,7 @@ class Search(BaseSDK):
         http_res = self.do_request(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="performVoiceSearch",
+                operation_id="checkForUpdates",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -344,23 +293,23 @@ class Search(BaseSDK):
 
         response_data: Any = None
         if utils.match_response(http_res, "200", "*"):
-            return operations.PerformVoiceSearchResponse(
+            return operations.CheckForUpdatesResponse(
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformVoiceSearchBadRequestData
+                http_res.text, errors.CheckForUpdatesBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.PerformVoiceSearchBadRequest(data=response_data)
+            raise errors.CheckForUpdatesBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformVoiceSearchUnauthorizedData
+                http_res.text, errors.CheckForUpdatesUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.PerformVoiceSearchUnauthorized(data=response_data)
+            raise errors.CheckForUpdatesUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = utils.stream_to_text(http_res)
             raise errors.SDKError(
@@ -381,28 +330,20 @@ class Search(BaseSDK):
             http_res,
         )
 
-    async def perform_voice_search_async(
+    async def check_for_updates_async(
         self,
         *,
-        query: str,
-        section_id: Optional[float] = None,
-        limit: Optional[float] = 3,
+        download: Optional[operations.Download] = None,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.PerformVoiceSearchResponse:
-        r"""Perform a voice search
+    ) -> operations.CheckForUpdatesResponse:
+        r"""Checking for updates
 
-        This endpoint performs a search specifically tailored towards voice or other imprecise input which may work badly with the substring and spell-checking heuristics used by the `/hubs/search` endpoint.
-        It uses a [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) heuristic to search titles, and as such is much slower than the other search endpoint.
-        Whenever possible, clients should limit the search to the appropriate type.
-        Results, as well as their containing per-type hubs, contain a `distance` attribute which can be used to judge result quality.
+        Checking for updates
 
-
-        :param query: The query term
-        :param section_id: This gives context to the search, and can result in re-ordering of search result hubs
-        :param limit: The number of items to return per hub
+        :param download: Indicate that you want to start download any updates found.
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -418,15 +359,13 @@ class Search(BaseSDK):
         else:
             base_url = self._get_url(base_url, url_variables)
 
-        request = operations.PerformVoiceSearchRequest(
-            query=query,
-            section_id=section_id,
-            limit=limit,
+        request = operations.CheckForUpdatesRequest(
+            download=download,
         )
 
         req = self._build_request_async(
-            method="GET",
-            path="/hubs/search/voice",
+            method="PUT",
+            path="/updater/check",
             base_url=base_url,
             url_variables=url_variables,
             request=request,
@@ -451,7 +390,7 @@ class Search(BaseSDK):
         http_res = await self.do_request_async(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="performVoiceSearch",
+                operation_id="checkForUpdates",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -462,23 +401,23 @@ class Search(BaseSDK):
 
         response_data: Any = None
         if utils.match_response(http_res, "200", "*"):
-            return operations.PerformVoiceSearchResponse(
+            return operations.CheckForUpdatesResponse(
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformVoiceSearchBadRequestData
+                http_res.text, errors.CheckForUpdatesBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.PerformVoiceSearchBadRequest(data=response_data)
+            raise errors.CheckForUpdatesBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformVoiceSearchUnauthorizedData
+                http_res.text, errors.CheckForUpdatesUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.PerformVoiceSearchUnauthorized(data=response_data)
+            raise errors.CheckForUpdatesUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = await utils.stream_to_text_async(http_res)
             raise errors.SDKError(
@@ -499,20 +438,23 @@ class Search(BaseSDK):
             http_res,
         )
 
-    def get_search_results(
+    def apply_updates(
         self,
         *,
-        query: str,
+        tonight: Optional[operations.Tonight] = None,
+        skip: Optional[operations.Skip] = None,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.GetSearchResultsResponse:
-        r"""Get Search Results
+    ) -> operations.ApplyUpdatesResponse:
+        r"""Apply Updates
 
-        This will search the database for the string provided.
+        Note that these two parameters are effectively mutually exclusive. The `tonight` parameter takes precedence and `skip` will be ignored if `tonight` is also passed
 
-        :param query: The search query string to use
+
+        :param tonight: Indicate that you want the update to run during the next Butler execution. Omitting this or setting it to false indicates that the update should install
+        :param skip: Indicate that the latest version should be marked as skipped. The [Release] entry for this version will have the `state` set to `skipped`.
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -528,13 +470,14 @@ class Search(BaseSDK):
         else:
             base_url = self._get_url(base_url, url_variables)
 
-        request = operations.GetSearchResultsRequest(
-            query=query,
+        request = operations.ApplyUpdatesRequest(
+            tonight=tonight,
+            skip=skip,
         )
 
         req = self._build_request(
-            method="GET",
-            path="/search",
+            method="PUT",
+            path="/updater/apply",
             base_url=base_url,
             url_variables=url_variables,
             request=request,
@@ -559,43 +502,40 @@ class Search(BaseSDK):
         http_res = self.do_request(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="getSearchResults",
+                operation_id="applyUpdates",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
             request=req,
-            error_status_codes=["400", "401", "4XX", "5XX"],
+            error_status_codes=["400", "401", "4XX", "500", "5XX"],
             retry_config=retry_config,
         )
 
         response_data: Any = None
-        if utils.match_response(http_res, "200", "application/json"):
-            return operations.GetSearchResultsResponse(
-                object=utils.unmarshal_json(
-                    http_res.text, Optional[operations.GetSearchResultsResponseBody]
-                ),
+        if utils.match_response(http_res, "200", "*"):
+            return operations.ApplyUpdatesResponse(
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.GetSearchResultsBadRequestData
+                http_res.text, errors.ApplyUpdatesBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.GetSearchResultsBadRequest(data=response_data)
+            raise errors.ApplyUpdatesBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.GetSearchResultsUnauthorizedData
+                http_res.text, errors.ApplyUpdatesUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.GetSearchResultsUnauthorized(data=response_data)
+            raise errors.ApplyUpdatesUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = utils.stream_to_text(http_res)
             raise errors.SDKError(
                 "API error occurred", http_res.status_code, http_res_text, http_res
             )
-        if utils.match_response(http_res, "5XX", "*"):
+        if utils.match_response(http_res, ["500", "5XX"], "*"):
             http_res_text = utils.stream_to_text(http_res)
             raise errors.SDKError(
                 "API error occurred", http_res.status_code, http_res_text, http_res
@@ -610,20 +550,23 @@ class Search(BaseSDK):
             http_res,
         )
 
-    async def get_search_results_async(
+    async def apply_updates_async(
         self,
         *,
-        query: str,
+        tonight: Optional[operations.Tonight] = None,
+        skip: Optional[operations.Skip] = None,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.GetSearchResultsResponse:
-        r"""Get Search Results
+    ) -> operations.ApplyUpdatesResponse:
+        r"""Apply Updates
 
-        This will search the database for the string provided.
+        Note that these two parameters are effectively mutually exclusive. The `tonight` parameter takes precedence and `skip` will be ignored if `tonight` is also passed
 
-        :param query: The search query string to use
+
+        :param tonight: Indicate that you want the update to run during the next Butler execution. Omitting this or setting it to false indicates that the update should install
+        :param skip: Indicate that the latest version should be marked as skipped. The [Release] entry for this version will have the `state` set to `skipped`.
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -639,13 +582,14 @@ class Search(BaseSDK):
         else:
             base_url = self._get_url(base_url, url_variables)
 
-        request = operations.GetSearchResultsRequest(
-            query=query,
+        request = operations.ApplyUpdatesRequest(
+            tonight=tonight,
+            skip=skip,
         )
 
         req = self._build_request_async(
-            method="GET",
-            path="/search",
+            method="PUT",
+            path="/updater/apply",
             base_url=base_url,
             url_variables=url_variables,
             request=request,
@@ -670,43 +614,40 @@ class Search(BaseSDK):
         http_res = await self.do_request_async(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="getSearchResults",
+                operation_id="applyUpdates",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
             request=req,
-            error_status_codes=["400", "401", "4XX", "5XX"],
+            error_status_codes=["400", "401", "4XX", "500", "5XX"],
             retry_config=retry_config,
         )
 
         response_data: Any = None
-        if utils.match_response(http_res, "200", "application/json"):
-            return operations.GetSearchResultsResponse(
-                object=utils.unmarshal_json(
-                    http_res.text, Optional[operations.GetSearchResultsResponseBody]
-                ),
+        if utils.match_response(http_res, "200", "*"):
+            return operations.ApplyUpdatesResponse(
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.GetSearchResultsBadRequestData
+                http_res.text, errors.ApplyUpdatesBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.GetSearchResultsBadRequest(data=response_data)
+            raise errors.ApplyUpdatesBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.GetSearchResultsUnauthorizedData
+                http_res.text, errors.ApplyUpdatesUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.GetSearchResultsUnauthorized(data=response_data)
+            raise errors.ApplyUpdatesUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = await utils.stream_to_text_async(http_res)
             raise errors.SDKError(
                 "API error occurred", http_res.status_code, http_res_text, http_res
             )
-        if utils.match_response(http_res, "5XX", "*"):
+        if utils.match_response(http_res, ["500", "5XX"], "*"):
             http_res_text = await utils.stream_to_text_async(http_res)
             raise errors.SDKError(
                 "API error occurred", http_res.status_code, http_res_text, http_res

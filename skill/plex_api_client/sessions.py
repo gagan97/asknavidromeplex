@@ -5,42 +5,24 @@ from plex_api_client import utils
 from plex_api_client._hooks import HookContext
 from plex_api_client.models import errors, operations
 from plex_api_client.types import OptionalNullable, UNSET
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Union
 
 
-class Search(BaseSDK):
-    r"""API Calls that perform search operations with Plex Media Server"""
+class Sessions(BaseSDK):
+    r"""API Calls that perform search operations with Plex Media Server Sessions"""
 
-    def perform_search(
+    def get_sessions(
         self,
         *,
-        query: str,
-        section_id: Optional[int] = None,
-        limit: Optional[int] = 3,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.PerformSearchResponse:
-        r"""Perform a search
+    ) -> operations.GetSessionsResponse:
+        r"""Get Active Sessions
 
-        This endpoint performs a search across all library sections, or a single section, and returns matches as hubs, split up by type. It performs spell checking, looks for partial matches, and orders the hubs based on quality of results. In addition, based on matches, it will return other related matches (e.g. for a genre match, it may return movies in that genre, or for an actor match, movies with that actor).
+        This will retrieve the \"Now Playing\" Information of the PMS.
 
-        In the response's items, the following extra attributes are returned to further describe or disambiguate the result:
-
-        - `reason`: The reason for the result, if not because of a direct search term match; can be either:
-        - `section`: There are multiple identical results from different sections.
-        - `originalTitle`: There was a search term match from the original title field (sometimes those can be very different or in a foreign language).
-        - `<hub identifier>`: If the reason for the result is due to a result in another hub, the source hub identifier is returned. For example, if the search is for \"dylan\" then Bob Dylan may be returned as an artist result, an a few of his albums returned as album results with a reason code of `artist` (the identifier of that particular hub). Or if the search is for \"arnold\", there might be movie results returned with a reason of `actor`
-        - `reasonTitle`: The string associated with the reason code. For a section reason, it'll be the section name; For a hub identifier, it'll be a string associated with the match (e.g. `Arnold Schwarzenegger` for movies which were returned because the search was for \"arnold\").
-        - `reasonID`: The ID of the item associated with the reason for the result. This might be a section ID, a tag ID, an artist ID, or a show ID.
-
-        This request is intended to be very fast, and called as the user types.
-
-
-        :param query: The query term
-        :param section_id: This gives context to the search, and can result in re-ordering of search result hubs
-        :param limit: The number of items to return per hub
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -55,19 +37,12 @@ class Search(BaseSDK):
             base_url = server_url
         else:
             base_url = self._get_url(base_url, url_variables)
-
-        request = operations.PerformSearchRequest(
-            query=query,
-            section_id=section_id,
-            limit=limit,
-        )
-
         req = self._build_request(
             method="GET",
-            path="/hubs/search",
+            path="/status/sessions",
             base_url=base_url,
             url_variables=url_variables,
-            request=request,
+            request=None,
             request_body_required=False,
             request_has_path_params=False,
             request_has_query_params=True,
@@ -89,7 +64,7 @@ class Search(BaseSDK):
         http_res = self.do_request(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="performSearch",
+                operation_id="getSessions",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -99,24 +74,27 @@ class Search(BaseSDK):
         )
 
         response_data: Any = None
-        if utils.match_response(http_res, "200", "*"):
-            return operations.PerformSearchResponse(
+        if utils.match_response(http_res, "200", "application/json"):
+            return operations.GetSessionsResponse(
+                object=utils.unmarshal_json(
+                    http_res.text, Optional[operations.GetSessionsResponseBody]
+                ),
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformSearchBadRequestData
+                http_res.text, errors.GetSessionsBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.PerformSearchBadRequest(data=response_data)
+            raise errors.GetSessionsBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformSearchUnauthorizedData
+                http_res.text, errors.GetSessionsUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.PerformSearchUnauthorized(data=response_data)
+            raise errors.GetSessionsUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = utils.stream_to_text(http_res)
             raise errors.SDKError(
@@ -137,36 +115,18 @@ class Search(BaseSDK):
             http_res,
         )
 
-    async def perform_search_async(
+    async def get_sessions_async(
         self,
         *,
-        query: str,
-        section_id: Optional[int] = None,
-        limit: Optional[int] = 3,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.PerformSearchResponse:
-        r"""Perform a search
+    ) -> operations.GetSessionsResponse:
+        r"""Get Active Sessions
 
-        This endpoint performs a search across all library sections, or a single section, and returns matches as hubs, split up by type. It performs spell checking, looks for partial matches, and orders the hubs based on quality of results. In addition, based on matches, it will return other related matches (e.g. for a genre match, it may return movies in that genre, or for an actor match, movies with that actor).
+        This will retrieve the \"Now Playing\" Information of the PMS.
 
-        In the response's items, the following extra attributes are returned to further describe or disambiguate the result:
-
-        - `reason`: The reason for the result, if not because of a direct search term match; can be either:
-        - `section`: There are multiple identical results from different sections.
-        - `originalTitle`: There was a search term match from the original title field (sometimes those can be very different or in a foreign language).
-        - `<hub identifier>`: If the reason for the result is due to a result in another hub, the source hub identifier is returned. For example, if the search is for \"dylan\" then Bob Dylan may be returned as an artist result, an a few of his albums returned as album results with a reason code of `artist` (the identifier of that particular hub). Or if the search is for \"arnold\", there might be movie results returned with a reason of `actor`
-        - `reasonTitle`: The string associated with the reason code. For a section reason, it'll be the section name; For a hub identifier, it'll be a string associated with the match (e.g. `Arnold Schwarzenegger` for movies which were returned because the search was for \"arnold\").
-        - `reasonID`: The ID of the item associated with the reason for the result. This might be a section ID, a tag ID, an artist ID, or a show ID.
-
-        This request is intended to be very fast, and called as the user types.
-
-
-        :param query: The query term
-        :param section_id: This gives context to the search, and can result in re-ordering of search result hubs
-        :param limit: The number of items to return per hub
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -181,19 +141,12 @@ class Search(BaseSDK):
             base_url = server_url
         else:
             base_url = self._get_url(base_url, url_variables)
-
-        request = operations.PerformSearchRequest(
-            query=query,
-            section_id=section_id,
-            limit=limit,
-        )
-
         req = self._build_request_async(
             method="GET",
-            path="/hubs/search",
+            path="/status/sessions",
             base_url=base_url,
             url_variables=url_variables,
-            request=request,
+            request=None,
             request_body_required=False,
             request_has_path_params=False,
             request_has_query_params=True,
@@ -215,7 +168,7 @@ class Search(BaseSDK):
         http_res = await self.do_request_async(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="performSearch",
+                operation_id="getSessions",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -225,24 +178,27 @@ class Search(BaseSDK):
         )
 
         response_data: Any = None
-        if utils.match_response(http_res, "200", "*"):
-            return operations.PerformSearchResponse(
+        if utils.match_response(http_res, "200", "application/json"):
+            return operations.GetSessionsResponse(
+                object=utils.unmarshal_json(
+                    http_res.text, Optional[operations.GetSessionsResponseBody]
+                ),
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformSearchBadRequestData
+                http_res.text, errors.GetSessionsBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.PerformSearchBadRequest(data=response_data)
+            raise errors.GetSessionsBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformSearchUnauthorizedData
+                http_res.text, errors.GetSessionsUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.PerformSearchUnauthorized(data=response_data)
+            raise errors.GetSessionsUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = await utils.stream_to_text_async(http_res)
             raise errors.SDKError(
@@ -263,28 +219,28 @@ class Search(BaseSDK):
             http_res,
         )
 
-    def perform_voice_search(
+    def get_session_history(
         self,
         *,
-        query: str,
-        section_id: Optional[float] = None,
-        limit: Optional[float] = 3,
+        sort: Optional[str] = None,
+        account_id: Optional[int] = None,
+        filter_: Optional[
+            Union[operations.QueryParamFilter, operations.QueryParamFilterTypedDict]
+        ] = None,
+        library_section_id: Optional[int] = None,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.PerformVoiceSearchResponse:
-        r"""Perform a voice search
+    ) -> operations.GetSessionHistoryResponse:
+        r"""Get Session History
 
-        This endpoint performs a search specifically tailored towards voice or other imprecise input which may work badly with the substring and spell-checking heuristics used by the `/hubs/search` endpoint.
-        It uses a [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) heuristic to search titles, and as such is much slower than the other search endpoint.
-        Whenever possible, clients should limit the search to the appropriate type.
-        Results, as well as their containing per-type hubs, contain a `distance` attribute which can be used to judge result quality.
+        This will Retrieve a listing of all history views.
 
-
-        :param query: The query term
-        :param section_id: This gives context to the search, and can result in re-ordering of search result hubs
-        :param limit: The number of items to return per hub
+        :param sort: Sorts the results by the specified field followed by the direction (asc, desc)
+        :param account_id: Filter results by those that are related to a specific users id
+        :param filter_: Filters content by field and direction/equality (Unknown if viewedAt is the only supported column)
+        :param library_section_id: Filters the results based on the id of a valid library section
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -300,15 +256,18 @@ class Search(BaseSDK):
         else:
             base_url = self._get_url(base_url, url_variables)
 
-        request = operations.PerformVoiceSearchRequest(
-            query=query,
-            section_id=section_id,
-            limit=limit,
+        request = operations.GetSessionHistoryRequest(
+            sort=sort,
+            account_id=account_id,
+            filter_=utils.get_pydantic_model(
+                filter_, Optional[operations.QueryParamFilter]
+            ),
+            library_section_id=library_section_id,
         )
 
         req = self._build_request(
             method="GET",
-            path="/hubs/search/voice",
+            path="/status/sessions/history/all",
             base_url=base_url,
             url_variables=url_variables,
             request=request,
@@ -333,7 +292,7 @@ class Search(BaseSDK):
         http_res = self.do_request(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="performVoiceSearch",
+                operation_id="getSessionHistory",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -343,24 +302,27 @@ class Search(BaseSDK):
         )
 
         response_data: Any = None
-        if utils.match_response(http_res, "200", "*"):
-            return operations.PerformVoiceSearchResponse(
+        if utils.match_response(http_res, "200", "application/json"):
+            return operations.GetSessionHistoryResponse(
+                object=utils.unmarshal_json(
+                    http_res.text, Optional[operations.GetSessionHistoryResponseBody]
+                ),
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformVoiceSearchBadRequestData
+                http_res.text, errors.GetSessionHistoryBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.PerformVoiceSearchBadRequest(data=response_data)
+            raise errors.GetSessionHistoryBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformVoiceSearchUnauthorizedData
+                http_res.text, errors.GetSessionHistoryUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.PerformVoiceSearchUnauthorized(data=response_data)
+            raise errors.GetSessionHistoryUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = utils.stream_to_text(http_res)
             raise errors.SDKError(
@@ -381,28 +343,28 @@ class Search(BaseSDK):
             http_res,
         )
 
-    async def perform_voice_search_async(
+    async def get_session_history_async(
         self,
         *,
-        query: str,
-        section_id: Optional[float] = None,
-        limit: Optional[float] = 3,
+        sort: Optional[str] = None,
+        account_id: Optional[int] = None,
+        filter_: Optional[
+            Union[operations.QueryParamFilter, operations.QueryParamFilterTypedDict]
+        ] = None,
+        library_section_id: Optional[int] = None,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.PerformVoiceSearchResponse:
-        r"""Perform a voice search
+    ) -> operations.GetSessionHistoryResponse:
+        r"""Get Session History
 
-        This endpoint performs a search specifically tailored towards voice or other imprecise input which may work badly with the substring and spell-checking heuristics used by the `/hubs/search` endpoint.
-        It uses a [Levenshtein distance](https://en.wikipedia.org/wiki/Levenshtein_distance) heuristic to search titles, and as such is much slower than the other search endpoint.
-        Whenever possible, clients should limit the search to the appropriate type.
-        Results, as well as their containing per-type hubs, contain a `distance` attribute which can be used to judge result quality.
+        This will Retrieve a listing of all history views.
 
-
-        :param query: The query term
-        :param section_id: This gives context to the search, and can result in re-ordering of search result hubs
-        :param limit: The number of items to return per hub
+        :param sort: Sorts the results by the specified field followed by the direction (asc, desc)
+        :param account_id: Filter results by those that are related to a specific users id
+        :param filter_: Filters content by field and direction/equality (Unknown if viewedAt is the only supported column)
+        :param library_section_id: Filters the results based on the id of a valid library section
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -418,15 +380,18 @@ class Search(BaseSDK):
         else:
             base_url = self._get_url(base_url, url_variables)
 
-        request = operations.PerformVoiceSearchRequest(
-            query=query,
-            section_id=section_id,
-            limit=limit,
+        request = operations.GetSessionHistoryRequest(
+            sort=sort,
+            account_id=account_id,
+            filter_=utils.get_pydantic_model(
+                filter_, Optional[operations.QueryParamFilter]
+            ),
+            library_section_id=library_section_id,
         )
 
         req = self._build_request_async(
             method="GET",
-            path="/hubs/search/voice",
+            path="/status/sessions/history/all",
             base_url=base_url,
             url_variables=url_variables,
             request=request,
@@ -451,7 +416,7 @@ class Search(BaseSDK):
         http_res = await self.do_request_async(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="performVoiceSearch",
+                operation_id="getSessionHistory",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -461,24 +426,27 @@ class Search(BaseSDK):
         )
 
         response_data: Any = None
-        if utils.match_response(http_res, "200", "*"):
-            return operations.PerformVoiceSearchResponse(
+        if utils.match_response(http_res, "200", "application/json"):
+            return operations.GetSessionHistoryResponse(
+                object=utils.unmarshal_json(
+                    http_res.text, Optional[operations.GetSessionHistoryResponseBody]
+                ),
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
                 raw_response=http_res,
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformVoiceSearchBadRequestData
+                http_res.text, errors.GetSessionHistoryBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.PerformVoiceSearchBadRequest(data=response_data)
+            raise errors.GetSessionHistoryBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.PerformVoiceSearchUnauthorizedData
+                http_res.text, errors.GetSessionHistoryUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.PerformVoiceSearchUnauthorized(data=response_data)
+            raise errors.GetSessionHistoryUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = await utils.stream_to_text_async(http_res)
             raise errors.SDKError(
@@ -499,20 +467,18 @@ class Search(BaseSDK):
             http_res,
         )
 
-    def get_search_results(
+    def get_transcode_sessions(
         self,
         *,
-        query: str,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.GetSearchResultsResponse:
-        r"""Get Search Results
+    ) -> operations.GetTranscodeSessionsResponse:
+        r"""Get Transcode Sessions
 
-        This will search the database for the string provided.
+        Get Transcode Sessions
 
-        :param query: The search query string to use
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -527,17 +493,12 @@ class Search(BaseSDK):
             base_url = server_url
         else:
             base_url = self._get_url(base_url, url_variables)
-
-        request = operations.GetSearchResultsRequest(
-            query=query,
-        )
-
         req = self._build_request(
             method="GET",
-            path="/search",
+            path="/transcode/sessions",
             base_url=base_url,
             url_variables=url_variables,
-            request=request,
+            request=None,
             request_body_required=False,
             request_has_path_params=False,
             request_has_query_params=True,
@@ -559,7 +520,7 @@ class Search(BaseSDK):
         http_res = self.do_request(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="getSearchResults",
+                operation_id="getTranscodeSessions",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -570,9 +531,9 @@ class Search(BaseSDK):
 
         response_data: Any = None
         if utils.match_response(http_res, "200", "application/json"):
-            return operations.GetSearchResultsResponse(
+            return operations.GetTranscodeSessionsResponse(
                 object=utils.unmarshal_json(
-                    http_res.text, Optional[operations.GetSearchResultsResponseBody]
+                    http_res.text, Optional[operations.GetTranscodeSessionsResponseBody]
                 ),
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
@@ -580,16 +541,16 @@ class Search(BaseSDK):
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.GetSearchResultsBadRequestData
+                http_res.text, errors.GetTranscodeSessionsBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.GetSearchResultsBadRequest(data=response_data)
+            raise errors.GetTranscodeSessionsBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.GetSearchResultsUnauthorizedData
+                http_res.text, errors.GetTranscodeSessionsUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.GetSearchResultsUnauthorized(data=response_data)
+            raise errors.GetTranscodeSessionsUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = utils.stream_to_text(http_res)
             raise errors.SDKError(
@@ -610,20 +571,18 @@ class Search(BaseSDK):
             http_res,
         )
 
-    async def get_search_results_async(
+    async def get_transcode_sessions_async(
         self,
         *,
-        query: str,
         retries: OptionalNullable[utils.RetryConfig] = UNSET,
         server_url: Optional[str] = None,
         timeout_ms: Optional[int] = None,
         http_headers: Optional[Mapping[str, str]] = None,
-    ) -> operations.GetSearchResultsResponse:
-        r"""Get Search Results
+    ) -> operations.GetTranscodeSessionsResponse:
+        r"""Get Transcode Sessions
 
-        This will search the database for the string provided.
+        Get Transcode Sessions
 
-        :param query: The search query string to use
         :param retries: Override the default retry configuration for this method
         :param server_url: Override the default server URL for this method
         :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
@@ -638,17 +597,12 @@ class Search(BaseSDK):
             base_url = server_url
         else:
             base_url = self._get_url(base_url, url_variables)
-
-        request = operations.GetSearchResultsRequest(
-            query=query,
-        )
-
         req = self._build_request_async(
             method="GET",
-            path="/search",
+            path="/transcode/sessions",
             base_url=base_url,
             url_variables=url_variables,
-            request=request,
+            request=None,
             request_body_required=False,
             request_has_path_params=False,
             request_has_query_params=True,
@@ -670,7 +624,7 @@ class Search(BaseSDK):
         http_res = await self.do_request_async(
             hook_ctx=HookContext(
                 base_url=base_url or "",
-                operation_id="getSearchResults",
+                operation_id="getTranscodeSessions",
                 oauth2_scopes=[],
                 security_source=self.sdk_configuration.security,
             ),
@@ -681,9 +635,9 @@ class Search(BaseSDK):
 
         response_data: Any = None
         if utils.match_response(http_res, "200", "application/json"):
-            return operations.GetSearchResultsResponse(
+            return operations.GetTranscodeSessionsResponse(
                 object=utils.unmarshal_json(
-                    http_res.text, Optional[operations.GetSearchResultsResponseBody]
+                    http_res.text, Optional[operations.GetTranscodeSessionsResponseBody]
                 ),
                 status_code=http_res.status_code,
                 content_type=http_res.headers.get("Content-Type") or "",
@@ -691,16 +645,232 @@ class Search(BaseSDK):
             )
         if utils.match_response(http_res, "400", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.GetSearchResultsBadRequestData
+                http_res.text, errors.GetTranscodeSessionsBadRequestData
             )
             response_data.raw_response = http_res
-            raise errors.GetSearchResultsBadRequest(data=response_data)
+            raise errors.GetTranscodeSessionsBadRequest(data=response_data)
         if utils.match_response(http_res, "401", "application/json"):
             response_data = utils.unmarshal_json(
-                http_res.text, errors.GetSearchResultsUnauthorizedData
+                http_res.text, errors.GetTranscodeSessionsUnauthorizedData
             )
             response_data.raw_response = http_res
-            raise errors.GetSearchResultsUnauthorized(data=response_data)
+            raise errors.GetTranscodeSessionsUnauthorized(data=response_data)
+        if utils.match_response(http_res, "4XX", "*"):
+            http_res_text = await utils.stream_to_text_async(http_res)
+            raise errors.SDKError(
+                "API error occurred", http_res.status_code, http_res_text, http_res
+            )
+        if utils.match_response(http_res, "5XX", "*"):
+            http_res_text = await utils.stream_to_text_async(http_res)
+            raise errors.SDKError(
+                "API error occurred", http_res.status_code, http_res_text, http_res
+            )
+
+        content_type = http_res.headers.get("Content-Type")
+        http_res_text = await utils.stream_to_text_async(http_res)
+        raise errors.SDKError(
+            f"Unexpected response received (code: {http_res.status_code}, type: {content_type})",
+            http_res.status_code,
+            http_res_text,
+            http_res,
+        )
+
+    def stop_transcode_session(
+        self,
+        *,
+        session_key: str,
+        retries: OptionalNullable[utils.RetryConfig] = UNSET,
+        server_url: Optional[str] = None,
+        timeout_ms: Optional[int] = None,
+        http_headers: Optional[Mapping[str, str]] = None,
+    ) -> operations.StopTranscodeSessionResponse:
+        r"""Stop a Transcode Session
+
+        Stop a Transcode Session
+
+        :param session_key: the Key of the transcode session to stop
+        :param retries: Override the default retry configuration for this method
+        :param server_url: Override the default server URL for this method
+        :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
+        :param http_headers: Additional headers to set or replace on requests.
+        """
+        base_url = None
+        url_variables = None
+        if timeout_ms is None:
+            timeout_ms = self.sdk_configuration.timeout_ms
+
+        if server_url is not None:
+            base_url = server_url
+        else:
+            base_url = self._get_url(base_url, url_variables)
+
+        request = operations.StopTranscodeSessionRequest(
+            session_key=session_key,
+        )
+
+        req = self._build_request(
+            method="DELETE",
+            path="/transcode/sessions/{sessionKey}",
+            base_url=base_url,
+            url_variables=url_variables,
+            request=request,
+            request_body_required=False,
+            request_has_path_params=True,
+            request_has_query_params=True,
+            user_agent_header="user-agent",
+            accept_header_value="application/json",
+            http_headers=http_headers,
+            security=self.sdk_configuration.security,
+            timeout_ms=timeout_ms,
+        )
+
+        if retries == UNSET:
+            if self.sdk_configuration.retry_config is not UNSET:
+                retries = self.sdk_configuration.retry_config
+
+        retry_config = None
+        if isinstance(retries, utils.RetryConfig):
+            retry_config = (retries, ["429", "500", "502", "503", "504"])
+
+        http_res = self.do_request(
+            hook_ctx=HookContext(
+                base_url=base_url or "",
+                operation_id="stopTranscodeSession",
+                oauth2_scopes=[],
+                security_source=self.sdk_configuration.security,
+            ),
+            request=req,
+            error_status_codes=["400", "401", "4XX", "5XX"],
+            retry_config=retry_config,
+        )
+
+        response_data: Any = None
+        if utils.match_response(http_res, "204", "*"):
+            return operations.StopTranscodeSessionResponse(
+                status_code=http_res.status_code,
+                content_type=http_res.headers.get("Content-Type") or "",
+                raw_response=http_res,
+            )
+        if utils.match_response(http_res, "400", "application/json"):
+            response_data = utils.unmarshal_json(
+                http_res.text, errors.StopTranscodeSessionBadRequestData
+            )
+            response_data.raw_response = http_res
+            raise errors.StopTranscodeSessionBadRequest(data=response_data)
+        if utils.match_response(http_res, "401", "application/json"):
+            response_data = utils.unmarshal_json(
+                http_res.text, errors.StopTranscodeSessionUnauthorizedData
+            )
+            response_data.raw_response = http_res
+            raise errors.StopTranscodeSessionUnauthorized(data=response_data)
+        if utils.match_response(http_res, "4XX", "*"):
+            http_res_text = utils.stream_to_text(http_res)
+            raise errors.SDKError(
+                "API error occurred", http_res.status_code, http_res_text, http_res
+            )
+        if utils.match_response(http_res, "5XX", "*"):
+            http_res_text = utils.stream_to_text(http_res)
+            raise errors.SDKError(
+                "API error occurred", http_res.status_code, http_res_text, http_res
+            )
+
+        content_type = http_res.headers.get("Content-Type")
+        http_res_text = utils.stream_to_text(http_res)
+        raise errors.SDKError(
+            f"Unexpected response received (code: {http_res.status_code}, type: {content_type})",
+            http_res.status_code,
+            http_res_text,
+            http_res,
+        )
+
+    async def stop_transcode_session_async(
+        self,
+        *,
+        session_key: str,
+        retries: OptionalNullable[utils.RetryConfig] = UNSET,
+        server_url: Optional[str] = None,
+        timeout_ms: Optional[int] = None,
+        http_headers: Optional[Mapping[str, str]] = None,
+    ) -> operations.StopTranscodeSessionResponse:
+        r"""Stop a Transcode Session
+
+        Stop a Transcode Session
+
+        :param session_key: the Key of the transcode session to stop
+        :param retries: Override the default retry configuration for this method
+        :param server_url: Override the default server URL for this method
+        :param timeout_ms: Override the default request timeout configuration for this method in milliseconds
+        :param http_headers: Additional headers to set or replace on requests.
+        """
+        base_url = None
+        url_variables = None
+        if timeout_ms is None:
+            timeout_ms = self.sdk_configuration.timeout_ms
+
+        if server_url is not None:
+            base_url = server_url
+        else:
+            base_url = self._get_url(base_url, url_variables)
+
+        request = operations.StopTranscodeSessionRequest(
+            session_key=session_key,
+        )
+
+        req = self._build_request_async(
+            method="DELETE",
+            path="/transcode/sessions/{sessionKey}",
+            base_url=base_url,
+            url_variables=url_variables,
+            request=request,
+            request_body_required=False,
+            request_has_path_params=True,
+            request_has_query_params=True,
+            user_agent_header="user-agent",
+            accept_header_value="application/json",
+            http_headers=http_headers,
+            security=self.sdk_configuration.security,
+            timeout_ms=timeout_ms,
+        )
+
+        if retries == UNSET:
+            if self.sdk_configuration.retry_config is not UNSET:
+                retries = self.sdk_configuration.retry_config
+
+        retry_config = None
+        if isinstance(retries, utils.RetryConfig):
+            retry_config = (retries, ["429", "500", "502", "503", "504"])
+
+        http_res = await self.do_request_async(
+            hook_ctx=HookContext(
+                base_url=base_url or "",
+                operation_id="stopTranscodeSession",
+                oauth2_scopes=[],
+                security_source=self.sdk_configuration.security,
+            ),
+            request=req,
+            error_status_codes=["400", "401", "4XX", "5XX"],
+            retry_config=retry_config,
+        )
+
+        response_data: Any = None
+        if utils.match_response(http_res, "204", "*"):
+            return operations.StopTranscodeSessionResponse(
+                status_code=http_res.status_code,
+                content_type=http_res.headers.get("Content-Type") or "",
+                raw_response=http_res,
+            )
+        if utils.match_response(http_res, "400", "application/json"):
+            response_data = utils.unmarshal_json(
+                http_res.text, errors.StopTranscodeSessionBadRequestData
+            )
+            response_data.raw_response = http_res
+            raise errors.StopTranscodeSessionBadRequest(data=response_data)
+        if utils.match_response(http_res, "401", "application/json"):
+            response_data = utils.unmarshal_json(
+                http_res.text, errors.StopTranscodeSessionUnauthorizedData
+            )
+            response_data.raw_response = http_res
+            raise errors.StopTranscodeSessionUnauthorized(data=response_data)
         if utils.match_response(http_res, "4XX", "*"):
             http_res_text = await utils.stream_to_text_async(http_res)
             raise errors.SDKError(
