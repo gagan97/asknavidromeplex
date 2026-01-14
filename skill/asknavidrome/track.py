@@ -6,7 +6,8 @@ class Track:
                  id: str = '', title: str = '', artist: str = '', artist_id: str = '',
                  album: str = '', album_id: str = '', track_no: int = 0, year: int = 0,
                  genre: str = '', duration: int = 0, bitrate: int = 0, uri: str = '',
-                 offset: int = 0, previous_id: str = '', source: str = 'navidrome') -> None:
+                 offset: int = 0, previous_id: str = '', source: str = 'navidrome',
+                 playback_failed: bool = False, transcoded: bool = False) -> None:
         """
         :param str id: The song ID. Defaults to ''
         :param str title: The song title. Defaults to ''
@@ -23,6 +24,8 @@ class Track:
         :param int offset: The position in the track to start playback in milliseconds. Defaults to 0
         :param str previous_id: The ID of the previous song in the playlist. Defaults to ''
         :param str source: The media source ('navidrome' or 'plex'). Defaults to 'navidrome'
+        :param bool playback_failed: Whether playback of this track has failed. Defaults to False
+        :param bool transcoded: Whether this track has been transcoded. Defaults to False
         :return: None
         """
 
@@ -41,5 +44,5 @@ class Track:
         self.offset: int = offset
         self.previous_id: str = previous_id
         self.source: str = source
-        self.playback_failed: bool = False
-        self.transcoded: bool = False
+        self.playback_failed: bool = playback_failed
+        self.transcoded: bool = transcoded
