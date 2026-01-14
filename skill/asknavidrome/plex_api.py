@@ -4,6 +4,13 @@ from typing import Union
 from difflib import SequenceMatcher
 import requests
 
+# Try to import Plex SDK, but gracefully handle if not available
+try:
+    from plex_api_client import PlexAPI
+    SDK_AVAILABLE = True
+except ImportError:
+    SDK_AVAILABLE = False
+
 
 class PlexConnection:
     """Class with methods to interact with Plex Media Server"""
@@ -29,6 +36,21 @@ class PlexConnection:
         }
         self.prefer_high_bitrate = prefer_high_bitrate
         self._music_library_key = None  # Cache the music library key
+
+        # Initialize Plex SDK if available
+        self._plex_sdk = None
+        if SDK_AVAILABLE:
+            try:
+                self._plex_sdk = PlexAPI(
+                    access_token=self.token,
+                    server_url=f"{self.server_url}:{self.port}"
+                )
+                self.logger.debug('Plex SDK initialized successfully')
+            except Exception as e:
+                self.logger.warning(f'Failed to initialize Plex SDK: {e}')
+                self._plex_sdk = None
+        else:
+            self.logger.debug('Plex SDK not available, skipping SDK-based search')
 
         self.logger.debug('PlexConnection initialized')
 
@@ -243,12 +265,55 @@ class PlexConnection:
 
         return []
 
-    def _calculate_match_score(self, track: dict, search_term: str, search_artist: str = None) -> float:
+    def _perform_api_client_search(self, term: str, section_id: str, limit: int = 20) -> list:
+        """Perform a search using the Plex API SDK client
+        
+        This search method uses the official Plex API SDK which may return
+        different results than the direct HTTP-based search methods.
+        
+        :param str term: The search term
+        :param str section_id: The library section ID to search in
+        :param int limit: Maximum number of results
+        :return: List of track results
+        :rtype: list
+        """
+        if not self._plex_sdk:
+            self.logger.debug('Plex SDK not available, skipping API client search')
+            return []
+        
+        self.logger.debug(f'Performing API client search for: {term}')
+        
+        try:
+            # Perform search using SDK
+            search_response = self._plex_sdk.search.perform_search(
+                query=term,
+                section_id=int(section_id),
+                limit=limit
+            )
+            
+            # Extract track results from the search response
+            if hasattr(search_response, 'raw_response') and hasattr(search_response.raw_response, 'json'):
+                json_data = search_response.raw_response.json()
+                
+                # Extract track hub data
+                track_hub = self._extract_track_hub(json_data)
+                
+                if track_hub and 'Metadata' in track_hub:
+                    tracks = self._parse_track_metadata(track_hub['Metadata'])
+                    self.logger.debug(f'API client search found {len(tracks)} tracks')
+                    return tracks
+        except Exception as e:
+            self.logger.error(f'Error in API client search: {e}')
+        
+        return []
+
+    def _calculate_match_score(self, track: dict, search_term: str, search_artist: str = None, log_details: bool = False) -> float:
         """Calculate a match score for a track based on title and artist similarity
 
         :param dict track: Track dictionary
         :param str search_term: The search term (title)
         :param str search_artist: Optional artist name to match
+        :param bool log_details: Whether to log detailed scoring information
         :return: Match score (0.0 to 1.0, with bonuses up to ~1.5)
         :rtype: float
         """
@@ -259,14 +324,23 @@ class PlexConnection:
         # Exact title match gets highest priority
         if track_title == normalized_term:
             score = 1.0
+            if log_details:
+                self.logger.debug(f'  └─ Title: EXACT MATCH (score: 1.0)')
         else:
             score = self._fuzzy_match(track_title, normalized_term)
+            if log_details:
+                self.logger.debug(f'  └─ Title fuzzy match: {score:.3f} ("{track_title}" vs "{normalized_term}")')
 
         # Boost score for prefix matches
+        prefix_bonus = 0.0
         if track_title.startswith(normalized_term) or normalized_term.startswith(track_title):
-            score += 0.1
+            prefix_bonus = 0.1
+            score += prefix_bonus
+            if log_details:
+                self.logger.debug(f'  └─ Prefix match bonus: +{prefix_bonus}')
 
         # Artist matching bonus (if artist provided)
+        artist_bonus = 0.0
         if search_artist:
             normalized_artist = self._normalize_string(search_artist)
             track_artist = self._normalize_string(track.get('artist', ''))
@@ -279,14 +353,24 @@ class PlexConnection:
             )
 
             # Add artist match as a bonus (up to 0.3)
-            score += artist_score * 0.3
+            artist_bonus = artist_score * 0.3
+            score += artist_bonus
+            if log_details:
+                self.logger.debug(f'  └─ Artist match: {artist_score:.3f}, bonus: +{artist_bonus:.3f} ("{track_artist}" vs "{normalized_artist}")')
 
         # Bitrate bonus when prefer_high_bitrate is enabled
+        bitrate_bonus = 0.0
         if self.prefer_high_bitrate:
             bitrate = track.get('bitRate', 0) or 0
             # Normalize bitrate bonus (max ~0.1 bonus for very high bitrates like 1411 kbps)
             if bitrate > 0:
-                score += min(bitrate / 15000, 0.1)
+                bitrate_bonus = min(bitrate / 15000, 0.1)
+                score += bitrate_bonus
+                if log_details:
+                    self.logger.debug(f'  └─ Bitrate bonus: +{bitrate_bonus:.3f} ({bitrate} kbps)')
+
+        if log_details:
+            self.logger.debug(f'  └─ TOTAL SCORE: {score:.3f}')
 
         return score
 
@@ -302,10 +386,21 @@ class PlexConnection:
         if not tracks:
             return []
 
+        self.logger.debug('=' * 80)
+        self.logger.debug('SCORING ALL TRACKS:')
+        self.logger.debug('=' * 80)
+
         # Calculate scores and attach to tracks
         scored_tracks = []
-        for track in tracks:
-            score = self._calculate_match_score(track, search_term, search_artist)
+        for idx, track in enumerate(tracks, 1):
+            search_method = track.get('_search_method', 'unknown')
+            self.logger.debug(f'\nTrack #{idx} (from {search_method}):')
+            self.logger.debug(f'  Title: "{track.get("title", "N/A")}"')
+            self.logger.debug(f'  Artist: "{track.get("artist", "N/A")}"')
+            self.logger.debug(f'  Album: "{track.get("album", "N/A")}"')
+            self.logger.debug(f'  BitRate: {track.get("bitRate", 0)} kbps')
+            
+            score = self._calculate_match_score(track, search_term, search_artist, log_details=True)
             scored_tracks.append((score, track))
 
         # Sort by score descending
@@ -327,10 +422,28 @@ class PlexConnection:
                     existing_bitrate = existing[1].get('bitRate', 0) or 0
                     new_bitrate = track.get('bitRate', 0) or 0
                     if new_bitrate > existing_bitrate:
+                        self.logger.debug(f'\n  → Replaced duplicate with higher bitrate: {new_bitrate} > {existing_bitrate}')
                         track_map[key] = (score, track)
 
             scored_tracks = list(track_map.values())
             scored_tracks.sort(key=lambda x: x[0], reverse=True)
+
+        self.logger.debug('\n' + '=' * 80)
+        self.logger.debug('FINAL RANKING (top 5):')
+        self.logger.debug('=' * 80)
+        for idx, (score, track) in enumerate(scored_tracks[:5], 1):
+            search_method = track.get('_search_method', 'unknown')
+            self.logger.debug(f'#{idx} [Score: {score:.3f}] [{search_method}] "{track.get("title")}" by "{track.get("artist")}"')
+        
+        if scored_tracks:
+            best_score, best_track = scored_tracks[0]
+            best_method = best_track.get('_search_method', 'unknown')
+            self.logger.debug('\n' + '=' * 80)
+            self.logger.debug(f'✓ SELECTED: "{best_track.get("title")}" by "{best_track.get("artist")}"')
+            self.logger.debug(f'  Score: {best_score:.3f}')
+            self.logger.debug(f'  Method: {best_method}')
+            self.logger.debug(f'  BitRate: {best_track.get("bitRate", 0)} kbps')
+            self.logger.debug('=' * 80 + '\n')
 
         return [track for score, track in scored_tracks]
 
@@ -341,6 +454,7 @@ class PlexConnection:
         1. Hub search (global)
         2. Hub search with section ID (scoped to music library)
         3. Direct library search (title-based)
+        4. API client search (SDK-based)
 
         :param str term: The search term
         :param str artist: Optional artist name for better matching
@@ -390,6 +504,20 @@ class PlexConnection:
                     all_results.append(track)
                     new_count += 1
             self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({new_count} new)')
+
+        # Search method 4: API client search (SDK-based)
+        if library_key and SDK_AVAILABLE and self._plex_sdk:
+            self.logger.debug('Trying API client search (SDK)...')
+            api_results = self._perform_api_client_search(term, library_key)
+            new_count = 0
+            for track in api_results:
+                track_id = track.get('id')
+                if track_id and track_id not in seen_ids:
+                    seen_ids.add(track_id)
+                    track['_search_method'] = 'api_client'
+                    all_results.append(track)
+                    new_count += 1
+            self.logger.debug(f'API client search found {len(api_results)} tracks ({new_count} new)')
 
         self.logger.debug(f'Total unique tracks from all search methods: {len(all_results)}')
 
