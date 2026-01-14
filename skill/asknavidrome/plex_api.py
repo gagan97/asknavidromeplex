@@ -335,7 +335,7 @@ class PlexConnection:
                 # Check if this is a track (not an album or artist)
                 if hasattr(result, 'type') and result.type == 'track':
                     # Convert PlexAPI track object to our standardized format
-                    media = result.media[0] if result.media else None
+                    media = result.media[0] if result.media and len(result.media) > 0 else None
                     duration_ms = result.duration if hasattr(result, 'duration') else 0
                     
                     track_dict = {
@@ -352,7 +352,7 @@ class PlexConnection:
                         'audioChannels': media.audioChannels if media and hasattr(media, 'audioChannels') else 0,
                         'track': result.index if hasattr(result, 'index') else 0,
                         'year': result.year if hasattr(result, 'year') else 0,
-                        'genre': result.genres[0].tag if hasattr(result, 'genres') and result.genres else '',
+                        'genre': result.genres[0].tag if hasattr(result, 'genres') and result.genres and len(result.genres) > 0 else '',
                         'guid': result.guid if hasattr(result, 'guid') else '',
                         'Guid': result.guids if hasattr(result, 'guids') else []
                     }
