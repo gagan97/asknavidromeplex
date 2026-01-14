@@ -14,11 +14,6 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-try:
-    from plex_api_client import PlexAPI
-    SDK_AVAILABLE = True
-except ImportError:
-    SDK_AVAILABLE = False
 
 
 class PlexConnection:
@@ -47,6 +42,14 @@ class PlexConnection:
         self._music_library_key = None  # Cache the music library key
 
         # Initialize custom Plex API SDK if available
+        try:
+            from plex_api_client import PlexAPI
+            SDK_AVAILABLE = True
+            self.logger.debug('Plex SDK is available')
+        except ImportError:
+            SDK_AVAILABLE = False
+            self.logger.debug('Plex SDK is not available')
+
         self._plex_sdk = None
         if SDK_AVAILABLE:
             try:
