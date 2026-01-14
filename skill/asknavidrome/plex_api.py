@@ -7,12 +7,7 @@ import requests
 from typing import  List, Any
 import sys, os
 
-# Try to import custom Plex API client SDK (resilient to sibling package location)
-# Add parent directory (the "skill" folder) to sys.path so sibling package plex_api_client can be imported
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
+
 
 
 
@@ -42,6 +37,15 @@ class PlexConnection:
         self._music_library_key = None  # Cache the music library key
 
         # Initialize custom Plex API SDK if available
+        # Try to import custom Plex API client SDK (resilient to sibling package location)
+        # Add parent directory (the "skill" folder) to sys.path so sibling package plex_api_client can be imported
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        parent_dir = os.path.dirname(current_dir)
+        self.logger.debug(f'Adding parent directory to sys.path for SDK import: {parent_dir}')
+        if parent_dir not in sys.path:
+            sys.path.insert(0, parent_dir)
+            self.logger.debug(f'Parent directory added to {sys.path}')
+            
         try:
             from plex_api_client import PlexAPI
             SDK_AVAILABLE = True
