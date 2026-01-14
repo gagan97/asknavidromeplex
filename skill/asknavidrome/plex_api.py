@@ -5,12 +5,15 @@ from typing import Union
 from difflib import SequenceMatcher
 import requests
 from typing import  List, Any
+import sys, os
 
-# Try to import custom Plex API client SDK
+# Try to import custom Plex API client SDK (resilient to sibling package location)
+# Add parent directory (the "skill" folder) to sys.path so sibling package plex_api_client can be imported
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 try:
     from plex_api_client import PlexAPI
-    from plex_api_client.models import operations
-
     SDK_AVAILABLE = True
 except ImportError:
     SDK_AVAILABLE = False
@@ -597,6 +600,7 @@ class PlexConnection:
 
             if response.status_code == 200:
                 data = response.json()
+                self.logger.debug(f'Hub search with section response data: {data}')
                 track_hub = self._extract_track_hub(data)
                 if track_hub and 'Metadata' in track_hub:
                     tracks = self._parse_track_metadata(track_hub['Metadata'])
@@ -631,6 +635,7 @@ class PlexConnection:
 
             if response.status_code == 200:
                 data = response.json()
+                self.logger.debug(f'Direct library search response data: {data}')
                 metadata = data.get('MediaContainer', {}).get('Metadata', [])
                 if metadata:
                     tracks = self._parse_track_metadata(metadata)
@@ -642,7 +647,7 @@ class PlexConnection:
         return []
 
     def _perform_api_client_search(self, term: str, section_id: str, limit: int = 20) -> list:
-        """Perform a search using the custom Plex API SDK client
+        """Perform a search using the custom Plex API SDK
         
         This search method uses the custom plex_api_client SDK which may return
         different results than the direct HTTP-based search methods.
@@ -671,7 +676,8 @@ class PlexConnection:
             if search_response and hasattr(search_response, 'raw_response'):
                 try:
                     json_data = search_response.raw_response.json()
-                    
+                    self.logger.debug(f'API client search response data: {json_data}')
+
                     # Extract track hub data
                     track_hub = self._extract_track_hub(json_data)
                     
