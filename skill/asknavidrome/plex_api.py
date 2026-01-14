@@ -9,9 +9,11 @@ import sys, os
 
 # Try to import custom Plex API client SDK (resilient to sibling package location)
 # Add parent directory (the "skill" folder) to sys.path so sibling package plex_api_client can be imported
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
+
 try:
     from plex_api_client import PlexAPI
     SDK_AVAILABLE = True
