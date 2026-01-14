@@ -36,7 +36,7 @@ class SubsonicConnection:
                                         self.passwd,
                                         self.port,
                                         self.api_location,
-                                        'AskNavidrome',
+                                        'AskNavidromePlex',
                                         self.api_version,
                                         False)
 
@@ -357,7 +357,7 @@ class SubsonicConnection:
         # This creates a multiline f string, uri contains a single line with both
         # f strings.
         uri = (
-            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidrome&u='
+            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidromePlex&u='
             f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={id}'
         )
 
@@ -382,7 +382,7 @@ class SubsonicConnection:
         auth_token = md5(self.passwd.encode() + salt.encode())
 
         uri = (
-            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidrome&u='
+            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidromePlex&u='
             f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={id}&format={format}&maxBitRate={max_bit_rate}'
         )
 

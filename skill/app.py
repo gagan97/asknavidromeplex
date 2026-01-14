@@ -43,7 +43,7 @@ logger.addHandler(handler)
 # Get service configuration
 #
 
-logger.info('AskNavidrome 1.0 - Multi-source media player!')
+logger.info('AskNavidromePlex 1.0 - Multi-source media player!')
 logger.debug('Getting configuration from the environment...')
 
 try:
@@ -180,7 +180,29 @@ logger.debug('MediaQueue object created...')
 # at the same time.
 backgroundProcess = None
 
-logger.info('AskNavidrome Web Service is ready to start!')
+logger.info('AskNavidromePlex Web Service is ready to start!')
+
+
+def build_card_data(speech: str, track_details=None) -> dict:
+    """Build card data dictionary with art URLs from track details.
+    
+    :param str speech: The speech text to display
+    :param track_details: Track object containing cover_art_url and background_url
+    :return: Card data dictionary with title, text, art_url, and background_url
+    :rtype: dict
+    """
+    card = {
+        'title': 'AskNavidromePlex',
+        'text': speech,
+        'art_url': None,
+        'background_url': None
+    }
+    
+    if track_details:
+        card['art_url'] = getattr(track_details, 'cover_art_url', None)
+        card['background_url'] = getattr(track_details, 'background_url', None)
+    
+    return card
 
 
 #
@@ -257,7 +279,7 @@ class HelpHandler(AbstractRequestHandler):
     def handle(self, handler_input: HandlerInput) -> Response:
         logger.debug('In HelpHandler')
 
-        text = sanitise_speech_output('AskNavidrome lets you interact with media servers that offer a Subsonic compatible A.P.I.')
+        text = sanitise_speech_output('AskNavidromePlex lets you interact with media servers that offer a Subsonic compatible A.P.I.')
         handler_input.response_builder.speak(text)
 
         return handler_input.response_builder.response
@@ -312,12 +334,10 @@ class NaviSonicPlayMusicByArtist(AbstractRequestHandler):
             speech = sanitise_speech_output(f'Playing music by: {artist.value}')
             logger.info(speech)
 
-            card = {'title': 'AskNavidrome',
-                    'text': speech
-                    }
-
             play_queue.shuffle()
             track_details = play_queue.get_next_track()
+            card = build_card_data(speech, track_details)
+
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
 
@@ -382,10 +402,8 @@ class NaviSonicPlayAlbumByArtist(AbstractRequestHandler):
 
                 speech = sanitise_speech_output(f'Playing {album.value} by: {artist.value}')
                 logger.info(speech)
-                card = {'title': 'AskNavidrome',
-                        'text': speech
-                        }
                 track_details = play_queue.get_next_track()
+                card = build_card_data(speech, track_details)
 
                 return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -413,10 +431,8 @@ class NaviSonicPlayAlbumByArtist(AbstractRequestHandler):
 
                 speech = sanitise_speech_output(f'Playing {album.value}')
                 logger.info(speech)
-                card = {'title': 'AskNavidrome',
-                        'text': speech
-                        }
                 track_details = play_queue.get_next_track()
+                card = build_card_data(speech, track_details)
 
                 return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -481,10 +497,8 @@ class NaviSonicPlaySongByArtist(AbstractRequestHandler):
 
             speech = sanitise_speech_output(f'Playing {song.value} by {artist.value}')
             logger.info(speech)
-            card = {'title': 'AskNavidrome',
-                    'text': speech
-                    }
             track_details = play_queue.get_next_track()
+            card = build_card_data(speech, track_details)
 
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -532,10 +546,8 @@ class NaviSonicPlayPlaylist(AbstractRequestHandler):
 
             speech = sanitise_speech_output('Playing playlist ' + str(playlist.value))
             logger.info(speech)
-            card = {'title': 'AskNavidrome',
-                    'text': speech
-                    }
             track_details = play_queue.get_next_track()
+            card = build_card_data(speech, track_details)
 
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -597,10 +609,8 @@ class NaviSonicShufflePlaylist(AbstractRequestHandler):
 
             speech = sanitise_speech_output('Shuffling and playing playlist ' + str(playlist.value))
             logger.info(speech)
-            card = {'title': 'AskNavidrome',
-                    'text': speech
-                    }
             track_details = play_queue.get_next_track()
+            card = build_card_data(speech, track_details)
 
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -647,10 +657,8 @@ class NaviSonicPlayMusicByGenre(AbstractRequestHandler):
 
             speech = sanitise_speech_output(f'Playing {genre.value} music')
             logger.info(speech)
-            card = {'title': 'AskNavidrome',
-                    'text': speech
-                    }
             track_details = play_queue.get_next_track()
+            card = build_card_data(speech, track_details)
 
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -699,10 +707,8 @@ class NaviSonicPlayMusicRandom(AbstractRequestHandler):
 
             speech = sanitise_speech_output('Playing random music')
             logger.info(speech)
-            card = {'title': 'AskNavidrome',
-                    'text': speech
-                    }
             track_details = play_queue.get_next_track()
+            card = build_card_data(speech, track_details)
 
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -746,10 +752,8 @@ class NaviSonicPlayFavouriteSongs(AbstractRequestHandler):
 
             speech = sanitise_speech_output('Playing your favourite tracks.')
             logger.info(speech)
-            card = {'title': 'AskNavidrome',
-                    'text': speech
-                    }
             track_details = play_queue.get_next_track()
+            card = build_card_data(speech, track_details)
 
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -920,10 +924,8 @@ class NaviSonicPlaySong(AbstractRequestHandler):
 
         speech = sanitise_speech_output(f'Playing {song_title} by {song_artist}')
         logger.info(speech)
-        card = {'title': 'AskNavidrome',
-                'text': speech
-                }
         track_details = play_queue.get_next_track()
+        card = build_card_data(speech, track_details)
 
         return controller.start_playback('play', speech, card, track_details, handler_input)
 
@@ -1473,7 +1475,7 @@ sa.register(app=app, route='/')
 
 # Enable queue and history diagnostics
 if navidrome_log_level == 3:
-    logger.warning('AskNavidrome debugging has been enabled, this should only be used when testing!')
+    logger.warning('AskNavidromePlex debugging has been enabled, this should only be used when testing!')
     logger.warning('The /buffer, /queue and /history http endpoints are available publicly!')
 
     @app.route('/queue')
@@ -1485,7 +1487,7 @@ if navidrome_log_level == 3:
 
         current_track = play_queue.get_current_track()
 
-        return render_template('table.html', title='AskNavidrome - Queued Tracks',
+        return render_template('table.html', title='AskNavidromePlex - Queued Tracks',
                                tracks=play_queue.get_current_queue(), current=current_track)
 
     @app.route('/history')
@@ -1497,7 +1499,7 @@ if navidrome_log_level == 3:
 
         current_track = play_queue.get_current_track()
 
-        return render_template('table.html', title='AskNavidrome - Track History',
+        return render_template('table.html', title='AskNavidromePlex - Track History',
                                tracks=play_queue.get_history(), current=current_track)
 
     @app.route('/buffer')
@@ -1509,7 +1511,7 @@ if navidrome_log_level == 3:
 
         current_track = play_queue.get_current_track()
 
-        return render_template('table.html', title='AskNavidrome - Buffered Tracks',
+        return render_template('table.html', title='AskNavidromePlex - Buffered Tracks',
                                tracks=play_queue.get_buffer(), current=current_track)
 
 

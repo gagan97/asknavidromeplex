@@ -4,10 +4,13 @@ import urllib.parse
 from typing import Union
 from difflib import SequenceMatcher
 import requests
+from typing import  List, Any
 
 # Try to import custom Plex API client SDK
 try:
     from plex_api_client import PlexAPI
+    from plex_api_client.models import operations
+
     SDK_AVAILABLE = True
 except ImportError:
     SDK_AVAILABLE = False
@@ -43,9 +46,9 @@ class PlexConnection:
         if SDK_AVAILABLE:
             try:
                 self._plex_sdk = PlexAPI(
-                    access_token=self.token,
-                    server_url=f"{self.server_url}:{self.port}"
-                )
+                                    access_token=self.token,
+                                    server_url=self.server_url
+                                )
                 self.logger.debug('Plex SDK initialized successfully')
             except Exception as e:
                 self.logger.warning(f'Failed to initialize Plex SDK: {e}')
@@ -107,14 +110,8 @@ class PlexConnection:
                 # If MUSIC_SECTION env var is set, look for section by name
                 if music_section_name:
                     self.logger.info(f'Looking for music library section by name: {music_section_name}')
-                    for directory in directories:
-                        if directory.get('type') == 'artist' and directory.get('title') == music_section_name:
-                            self._music_library_key = directory.get('key')
-                            self.logger.info(f'Successfully found section "{directory.get("title")}" with key {self._music_library_key}')
-                            return self._music_library_key
-                    
-                    self.logger.error(f'Music section "{music_section_name}" not found in Plex')
-                    return None
+                    self._music_library_key = self._plex_sdk.library.section(music_section_name)
+                    return self._music_library_key
                 
                 # Fallback: Find first music library by type
                 for directory in directories:
@@ -169,8 +166,314 @@ class PlexConnection:
                     return hub
         return None
 
+    def _extract_all_properties(self,obj: Any, property_paths: List[str]) -> List[str]:
+        """
+        Extract ALL available properties from an object using multiple possible paths.
+        Unlike extract_property which returns the first found value, this returns all unique non-empty values.
+        
+        Args:
+            obj: The object to extract properties from
+            property_paths: List of possible property paths to try
+            
+        Returns:
+            List[str]: List of all unique non-empty values found, in order of property_paths priority
+        """
+        if obj is None:
+            return []
+        
+        found_values = []
+        seen = set()  # Track seen values to avoid duplicates
+        
+        for path in property_paths:
+            try:
+                value = None
+                
+                # Handle nested paths with dots
+                if '.' in path:
+                    parts = path.split('.')
+                    current = obj
+                    for part in parts:
+                        # If current is a list, try to get the first element
+                        if isinstance(current, list):
+                            if current:
+                                current = current[0]
+                            else:
+                                current = None
+                                break
+                        if hasattr(current, part):
+                            current = getattr(current, part)
+                        elif isinstance(current, dict) and part in current:
+                            current = current[part]
+                        elif hasattr(current, '__getitem__') and not isinstance(current, str):
+                            try:
+                                current = current[part]
+                            except (KeyError, TypeError, IndexError):
+                                current = None
+                                break
+                        else:
+                            current = None
+                            break
+                    value = current
+                # Handle direct attribute access
+                elif hasattr(obj, path):
+                    value = getattr(obj, path)
+                # Handle dictionary-style access
+                elif isinstance(obj, dict) and path in obj:
+                    value = obj[path]
+                elif hasattr(obj, '__getitem__') and not isinstance(obj, str):
+                    try:
+                        if path in obj:
+                            value = obj[path]
+                    except (KeyError, TypeError):
+                        pass
+                
+                # Add value if it's non-empty and not already seen
+                if value and isinstance(value, str) and value.strip():
+                    normalized_value = value.strip()
+                    if normalized_value.lower() not in seen:
+                        seen.add(normalized_value.lower())
+                        found_values.append(normalized_value)
+                        
+            except Exception:
+                continue
+        
+        # Check raw_response if available
+        try:
+            if hasattr(obj, 'raw_response') and hasattr(obj.raw_response, 'json'):
+                json_data = obj.raw_response.json()
+                for path in property_paths:
+                    if path in json_data and json_data[path]:
+                        value = json_data[path]
+                        if isinstance(value, str) and value.strip():
+                            normalized_value = value.strip()
+                            if normalized_value.lower() not in seen:
+                                seen.add(normalized_value.lower())
+                                found_values.append(normalized_value)
+        except Exception:
+            pass
+        
+        return found_values
+
+    def _get_all_track_artists(self,track) -> List[str]:
+        """
+        Extract ALL available artist names from track metadata.
+        Returns all unique artist name values found (originalTitle, grandparentTitle, etc.).
+        
+        Args:
+            track: The track metadata object from Plex API
+            
+        Returns:
+            List[str]: List of all available artist names
+        """
+        try:
+            return self._extract_all_properties(
+                track,
+                [
+                    'original_title',
+                    'originalTitle',  # Check originalTitle before grandparentTitle for accurate multi-artist data
+                    'grandparent_title',
+                    'Media.Artist.tag',
+                    'raw_response.json.grandparentTitle',
+                    'grandparentTitle',
+                    'guid'
+                ]
+            )
+        except Exception as e:
+            self.logger.error(f"[ Error extracting track artists: {str(e)}")
+            return []
+        
+    def _get_track_title(self, track) -> str:
+        """
+        Extract track title from Plex track metadata.
+        Returns the first available title value.
+        
+        Args:
+            track: The track metadata object from Plex API
+            
+        Returns:
+            str: The track title or empty string if not found
+        """
+        try:
+            titles = self._extract_all_properties(
+                track,
+                [
+                    'title',
+                    'raw_response.json.title'
+                ]
+            )
+            return titles[0] if titles else ""
+        except Exception as e:
+            self.logger.error(f"Error extracting track title: {str(e)}")
+            return ""
+
+    def _get_all_track_albums(self,track) -> List[str]:
+        """
+        Extract ALL available album names from track metadata.
+        Returns all unique album name values found.
+        
+        Args:
+            track: The track metadata object from Plex API
+            
+        Returns:
+            List[str]: List of all available album names
+        """
+        try:
+            return self._extract_all_properties(
+                track,
+                [
+                    'parent_title',
+                    'Media.Album.title',
+                    'raw_response.json.parentTitle',
+                    'parentTitle',
+                    'guid'
+                ]
+            )
+        except Exception as e:
+            self.logger.error(f"Error extracting album names: {str(e)}")
+            return []
+        
+    def _get_track_media_info(self,track):
+        """
+        Extract media info (bitrate, codec) from track metadata
+        
+        Args:
+            track: The track metadata object from Plex API
+            
+        Returns:
+            dict: The media info including audioCodec, bitrate, etc.
+        """
+        try:
+            media_info = {
+                'audioCodec': self._extract_all_properties(track, [
+                    'Media.audioCodec', 
+                    'raw_response.json.Media.audioCodec',
+                    'Media.0.audioCodec'  # Handle new XML format where Media is a list
+                ]),
+                'bitrate': self._extract_all_properties(track, [
+                    'Media.bitrate', 
+                    'raw_response.json.Media.bitrate',
+                    'Media.0.bitrate'
+                ]),
+                'channels': self._extract_all_properties(track, [
+                    'Media.audioChannels', 
+                    'raw_response.json.Media.audioChannels',
+                    'Media.0.audioChannels'
+                ]),
+                'duration': self._extract_all_properties(track, [
+                    'Media.duration', 
+                    'raw_response.json.Media.duration',
+                    'Media.0.duration'
+                ]),
+                'container': self._extract_all_properties(track, [
+                    'Media.container', 
+                    'raw_response.json.Media.container',
+                    'Media.0.container'
+                ]),
+                'ratingKey': self._extract_all_properties(track, [
+                    'Track.ratingKey', 
+                    'raw_response.json.Track.ratingKey',
+                    'Track.0.ratingKey'
+                ]),
+                'year': self._extract_all_properties(track, [
+                    'Track.parentYear', 
+                    'raw_response.json.Track.parentYear',
+                    'Track.0.parentYear'
+                ])
+            }
+            return media_info
+        except Exception as e:
+            self.logger.error(f"Error extracting media info: {str(e)}")
+            return {
+                'audioCodec': None,
+                'bitrate': None,
+                'channels': None,
+                'duration': None,
+                'container': None,
+                'ratingKey': None,
+                'year': None
+            }
+    
+    def _get_track_poster_info(self, track) -> dict:
+        """
+        Extract poster info from track metadata.
+        
+        Plex returns multiple Image elements per track (e.g., coverPoster, background).
+        This extracts all images into a structured format.
+        
+        Args:
+            track: The track metadata object from Plex API (dict or SDK object)
+            
+        Returns:
+            dict: Contains 'images' list and convenience keys 'coverPoster'/'background'
+                  Example: {
+                      'images': [{'type': 'coverPoster', 'url': '...'}, {'type': 'background', 'url': '...'}],
+                      'coverPoster': '/library/metadata/2054/thumb/1766870285',
+                      'background': '/library/metadata/2054/art/1766870285'
+                  }
+        """
+        result = {
+            'images': [],
+            'coverPoster': None,
+            'background': None
+        }
+        
+        try:
+            # Extract Image list from track metadata
+            images = None
+            
+            # Try dictionary access first (HTTP API response)
+            if isinstance(track, dict):
+                images = track.get('Image', [])
+            # Try attribute access (SDK object)
+            elif hasattr(track, 'Image'):
+                images = getattr(track, 'Image', [])
+            elif hasattr(track, 'image'):
+                images = getattr(track, 'image', [])
+            
+            # Also check raw_response if available
+            if not images:
+                try:
+                    if hasattr(track, 'raw_response') and hasattr(track.raw_response, 'json'):
+                        json_data = track.raw_response.json()
+                        images = json_data.get('Image', [])
+                except Exception:
+                    pass
+            
+            if not images:
+                return result
+            
+            # Ensure images is a list
+            if not isinstance(images, list):
+                images = [images]
+            
+            # Parse each image entry
+            for img in images:
+                img_type = None
+                img_url = None
+                
+                if isinstance(img, dict):
+                    img_type = img.get('type') or img.get('@type')
+                    img_url = img.get('url') or img.get('@url')
+                elif hasattr(img, 'type') and hasattr(img, 'url'):
+                    img_type = getattr(img, 'type', None)
+                    img_url = getattr(img, 'url', None)
+                
+                if img_type and img_url:
+                    result['images'].append({'type': img_type, 'url': img_url})
+                    
+                    # Set convenience keys for common types
+                    if img_type == 'coverPoster':
+                        result['coverPoster'] = img_url
+                    elif img_type == 'background':
+                        result['background'] = img_url
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting poster info: {str(e)}")
+        
+        return result
+
     def _parse_track_metadata(self, metadata_list: list) -> list:
-        """Parse track metadata into a standardized format
+        """Parse track metadata into a standardized format using helper functions
 
         :param list metadata_list: List of track metadata from Plex API
         :return: List of standardized track dictionaries
@@ -178,25 +481,65 @@ class PlexConnection:
         """
         songs = []
         for m in metadata_list:
-            media = m.get('Media', [{}])[0] if m.get('Media') else {}
-            duration_ms = m.get('duration') or 0
+            # Use helper functions to extract metadata
+            title = self._get_track_title(m)
+            artists = self._get_all_track_artists(m)
+            albums = self._get_all_track_albums(m)
+            media_info = self._get_track_media_info(m)
+            poster_info = self._get_track_poster_info(m)
+            
+            # Get primary values (first item from lists)
+            artist = artists[0] if artists else ''
+            album = albums[0] if albums else ''
+            
+            # Extract media info values (they come as lists from _extract_all_properties)
+            bitrate = media_info.get('bitrate', [])
+            bitrate = int(bitrate[0]) if bitrate else 0
+            
+            audio_codec = media_info.get('audioCodec', [])
+            audio_codec = audio_codec[0] if audio_codec else ''
+            
+            channels = media_info.get('channels', [])
+            channels = int(channels[0]) if channels else 0
+            
+            duration = media_info.get('duration', [])
+            duration_ms = int(duration[0]) if duration else 0
+            
+            year = media_info.get('year', [])
+            year = int(year[0]) if year else 0
+            
+            # Construct full poster URLs for Alexa display
+            cover_poster_url = None
+            background_url = None
+            if poster_info.get('coverPoster'):
+                cover_poster_url = f"{self.base_url}{poster_info['coverPoster']}?X-Plex-Token={self.token}"
+            if poster_info.get('background'):
+                background_url = f"{self.base_url}{poster_info['background']}?X-Plex-Token={self.token}"
+            
+            # Get ID from direct access (required for API calls)
+            track_id = m.get('ratingKey') if isinstance(m, dict) else getattr(m, 'ratingKey', None) or getattr(m, 'rating_key', None)
+            artist_id = m.get('grandparentRatingKey') if isinstance(m, dict) else getattr(m, 'grandparentRatingKey', None)
+            album_id = m.get('parentRatingKey') if isinstance(m, dict) else getattr(m, 'parentRatingKey', None)
+            track_index = m.get('index', 0) if isinstance(m, dict) else getattr(m, 'index', 0)
+            
             songs.append({
-                'id': m.get('ratingKey'),
-                'title': m.get('title'),
-                'artist': m.get('grandparentTitle'),
-                'originalArtist': m.get('originalTitle'),  # Multi-artist info
-                'artistId': m.get('grandparentRatingKey'),
-                'album': m.get('parentTitle'),
-                'albumId': m.get('parentRatingKey'),
+                'id': track_id,
+                'title': title,
+                'artist': artist,
+                'originalArtist': artists[1] if len(artists) > 1 else '',  # Secondary artist if available
+                'artistId': artist_id,
+                'album': album,
+                'albumId': album_id,
                 'duration': duration_ms // 1000 if duration_ms else 0,
-                'bitRate': media.get('bitrate', 0),
-                'audioCodec': media.get('audioCodec', ''),
-                'audioChannels': media.get('audioChannels', 0),
-                'track': m.get('index', 0),
-                'year': m.get('year', 0),
-                'genre': m.get('Genre', [{}])[0].get('tag', '') if m.get('Genre') else '',
-                'guid': m.get('guid', ''),
-                'Guid': m.get('Guid', [])  # Full GUID list for matching
+                'bitRate': bitrate,
+                'audioCodec': audio_codec,
+                'audioChannels': channels,
+                'track': track_index,
+                'year': year,
+                'coverPosterUrl': cover_poster_url,
+                'backgroundUrl': background_url,
+                'allArtists': artists,  # All extracted artists for reference
+                'allAlbums': albums,    # All extracted albums for reference
             })
         return songs
 
@@ -251,7 +594,9 @@ class PlexConnection:
                 data = response.json()
                 track_hub = self._extract_track_hub(data)
                 if track_hub and 'Metadata' in track_hub:
-                    return self._parse_track_metadata(track_hub['Metadata'])
+                    tracks = self._parse_track_metadata(track_hub['Metadata'])
+                    self.logger.debug(f'Hub search found {(tracks)} tracks')
+                    return tracks
         except requests.RequestException as e:
             self.logger.error(f'Error in hub search with section: {e}')
 
@@ -283,7 +628,9 @@ class PlexConnection:
                 data = response.json()
                 metadata = data.get('MediaContainer', {}).get('Metadata', [])
                 if metadata:
-                    return self._parse_track_metadata(metadata)
+                    tracks = self._parse_track_metadata(metadata)
+                    self.logger.debug(f'Direct library search found {(tracks)} tracks')
+                    return tracks
         except requests.RequestException as e:
             self.logger.error(f'Error in direct library search: {e}')
 
@@ -325,7 +672,7 @@ class PlexConnection:
                     
                     if track_hub and 'Metadata' in track_hub:
                         tracks = self._parse_track_metadata(track_hub['Metadata'])
-                        self.logger.debug(f'API client search found {len(tracks)} tracks')
+                        self.logger.debug(f'API client search found {(tracks)} tracks')
                         return tracks
                 except (AttributeError, ValueError) as e:
                     self.logger.error(f'Error parsing API client search response: {e}')
@@ -494,15 +841,15 @@ class PlexConnection:
         library_key = self._get_music_library_key()
 
         # Search method 1: Hub search (global)
-        self.logger.debug('Trying hub search...')
-        hub_results = self._perform_hub_search(term)
-        for track in hub_results:
-            track_id = track.get('id')
-            if track_id and track_id not in seen_ids:
-                seen_ids.add(track_id)
-                track['_search_method'] = 'hub'
-                all_results.append(track)
-        self.logger.debug(f'Hub search found {len(hub_results)} tracks')
+        # self.logger.debug('Trying hub search...')
+        # hub_results = self._perform_hub_search(term)
+        # for track in hub_results:
+        #     track_id = track.get('id')
+        #     if track_id and track_id not in seen_ids:
+        #         seen_ids.add(track_id)
+        #         track['_search_method'] = 'hub'
+        #         all_results.append(track)
+        # self.logger.debug(f'Hub search found {len(hub_results)} tracks')
 
         # Search method 2: Hub search with section ID
         if library_key:
@@ -717,7 +1064,7 @@ class PlexConnection:
         return albums
 
     def get_song_details(self, song_id: str) -> dict:
-        """Get details about a given song
+        """Get details about a given song using helper functions
 
         :param str song_id: A song rating key
         :return: A dictionary of details about the given song
@@ -736,22 +1083,53 @@ class PlexConnection:
             if response.status_code == 200:
                 data = response.json()
                 metadata = data.get('MediaContainer', {}).get('Metadata', [{}])[0]
-                media = metadata.get('Media', [{}])[0] if metadata.get('Media') else {}
-                duration_ms = metadata.get('duration') or 0
+                
+                # Use helper functions to extract metadata
+                title = self._get_track_title(metadata)
+                artists = self._get_all_track_artists(metadata)
+                albums = self._get_all_track_albums(metadata)
+                media_info = self._get_track_media_info(metadata)
+                poster_info = self._get_track_poster_info(metadata)
+                
+                # Get primary values
+                artist = artists[0] if artists else metadata.get('grandparentTitle', '')
+                album = albums[0] if albums else metadata.get('parentTitle', '')
+                
+                # Extract media info values
+                bitrate = media_info.get('bitrate', [])
+                bitrate = int(bitrate[0]) if bitrate else 0
+                
+                duration = media_info.get('duration', [])
+                duration_ms = int(duration[0]) if duration else (metadata.get('duration') or 0)
+                
+                year = media_info.get('year', [])
+                year = int(year[0]) if year else metadata.get('year', 0)
+                
+                # Construct full poster URLs
+                cover_poster_url = None
+                background_url = None
+                if poster_info.get('coverPoster'):
+                    cover_poster_url = f"{self.base_url}{poster_info['coverPoster']}?X-Plex-Token={self.token}"
+                if poster_info.get('background'):
+                    background_url = f"{self.base_url}{poster_info['background']}?X-Plex-Token={self.token}"
 
                 return {
                     'song': {
                         'id': metadata.get('ratingKey'),
-                        'title': metadata.get('title'),
-                        'artist': metadata.get('grandparentTitle'),
+                        'title': title or metadata.get('title', ''),
+                        'artist': artist,
                         'artistId': metadata.get('grandparentRatingKey'),
-                        'album': metadata.get('parentTitle'),
+                        'album': album,
                         'albumId': metadata.get('parentRatingKey'),
                         'track': metadata.get('index', 0),
-                        'year': metadata.get('year', 0),
+                        'year': year,
                         'genre': metadata.get('Genre', [{}])[0].get('tag', '') if metadata.get('Genre') else '',
                         'duration': duration_ms // 1000 if duration_ms else 0,
-                        'bitRate': media.get('bitrate', 0)
+                        'bitRate': bitrate,
+                        'coverPosterUrl': cover_poster_url,
+                        'backgroundUrl': background_url,
+                        'allArtists': artists,
+                        'allAlbums': albums
                     }
                 }
         except requests.RequestException as e:

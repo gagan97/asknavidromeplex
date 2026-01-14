@@ -20,9 +20,10 @@ services:
             - 'NAVI_SONG_COUNT=50'
             - 'NAVI_DEBUG=1'
             - 'PREFER_HIGH_BITRATE=0'
+            - 'MUSIC_SECTION=Music'
         ports:
             - '5000:5000'
-        image: 'ghcr.io/rosskouk/asknavidrome:latest'
+        image: 'ghcr.io/gaga97/asknavidromeplex:main'
         logging:
             driver: "json-file"
             options:
