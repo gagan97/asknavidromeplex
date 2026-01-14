@@ -80,14 +80,19 @@ class Search:
 
         except requests.RequestException as e:
             self.logger.error(f'SDK search request failed: {e}')
-            # Return a failed response
+            # Return a failed response with a proper mock object
 
             class FailedResponse:
                 status_code = 500
-                raw_response = None
 
                 def json(self):
                     return {}
 
-            failed = FailedResponse()
-            return SearchResponse(failed)
+            class FailedRequest:
+                status_code = 500
+                raw_response = FailedResponse()
+
+                def json(self):
+                    return {}
+
+            return SearchResponse(FailedRequest())
