@@ -74,12 +74,15 @@
                     "slots": [
                         {
                             "name": "playlist",
-                            "type": "playlist_names"
+                            "type": "AMAZON.SearchQuery"
                         }
                     ],
                     "samples": [
                         "Play the {playlist} playlist",
-                        "Start the {playlist} playlist"
+                        "Start the {playlist} playlist",
+                        "Play playlist {playlist}",
+                        "Play my {playlist} playlist",
+                        "Play {playlist} playlist"
                     ]
                 },
                 {
@@ -200,8 +203,27 @@
                     "samples": [
                         "randomise the queue",
                         "randomise",
-                        "shuffle",
-                        "shuffle the queue"
+                        "shuffle the queue",
+                        "shuffle current queue",
+                        "shuffle what's playing"
+                    ]
+                },
+                {
+                    "name": "NaviSonicShufflePlaylist",
+                    "slots": [
+                        {
+                            "name": "playlist",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "shuffle the {playlist} playlist",
+                        "shuffle playlist {playlist}",
+                        "shuffle {playlist} playlist",
+                        "shuffle and play the {playlist} playlist",
+                        "shuffle and play {playlist} playlist",
+                        "play {playlist} playlist shuffled",
+                        "play the {playlist} playlist on shuffle"
                     ]
                 },
                 {
@@ -286,28 +308,7 @@
                     "samples": []
                 }
             ],
-            "types": [
-                {
-                    "name": "playlist_names",
-                    "values": [
-                        {
-                            "name": {
-                                "value": "Background Music"
-                            }
-                        },
-                        {
-                            "name": {
-                                "value": "Rock Songs"
-                            }
-                        },
-                        {
-                            "name": {
-                                "value": "Work Music"
-                            }
-                        }
-                    ]
-                }
-            ]
+            "types": []
         }
     }
 }

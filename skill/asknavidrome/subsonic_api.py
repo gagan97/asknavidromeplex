@@ -363,6 +363,31 @@ class SubsonicConnection:
 
         return uri
 
+    def get_transcoded_song_uri(self, id: str, format: str = 'mp3', max_bit_rate: int = 192) -> str:
+        """Create a transcoded URI for a given song
+
+        Creates a URI for the song represented by the given ID with transcoding parameters.
+        This is useful when the original format (e.g., FLAC) is not playable on certain devices.
+
+        :param str id: A song ID
+        :param str format: Target format for transcoding (default: 'mp3')
+        :param int max_bit_rate: Maximum bit rate in kbps (default: 192)
+        :return: A properly formatted URI with transcoding parameters
+        :rtype: str
+        """
+
+        self.logger.debug(f'In function get_transcoded_song_uri() - format: {format}, bitrate: {max_bit_rate}')
+
+        salt = secrets.token_hex(16)
+        auth_token = md5(self.passwd.encode() + salt.encode())
+
+        uri = (
+            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidrome&u='
+            f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={id}&format={format}&maxBitRate={max_bit_rate}'
+        )
+
+        return uri
+
     def star_entry(self, id: str, mode: str) -> None:
         """Add a star to the given entity
 

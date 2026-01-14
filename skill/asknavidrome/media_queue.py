@@ -338,3 +338,53 @@ class MediaQueue:
         self.original_queue = deepcopy(self.queue)
         if self.current_track.id:
             self.original_queue.appendleft(deepcopy(self.current_track))
+
+    def skip_current_track(self) -> Track:
+        """Force skip to the next track
+
+        This method is used when playback fails and we need to skip to the next track,
+        ignoring repeat_one mode. If the queue is empty, returns a new empty Track.
+
+        :return: The next track object, or empty Track if queue is exhausted
+        :rtype: Track
+        """
+
+        self.logger.debug('In skip_current_track()')
+
+        # Mark current track as failed
+        if self.current_track.id:
+            self.current_track.playback_failed = True
+            self.history.append(self.current_track)
+
+        # Check if queue is empty
+        if len(self.queue) == 0:
+            # Handle loop mode - restore original queue
+            if self.playback_mode == self.MODE_LOOP and len(self.original_queue) > 0:
+                self.logger.debug('Loop mode: restoring original queue')
+                self.queue = deepcopy(self.original_queue)
+                self.history.clear()
+            else:
+                # No more tracks - return empty track
+                self.logger.debug('No more tracks in queue')
+                self.current_track = Track()
+                return self.current_track
+
+        # Get next track from queue
+        self.current_track = self.queue.popleft()
+        self.current_track.offset = 0
+
+        # Set the buffer to match the queue
+        self.sync()
+
+        return self.current_track
+
+    def mark_current_track_transcoded(self, new_uri: str) -> None:
+        """Mark current track as using transcoded stream and update URI
+
+        :param str new_uri: The new transcoded URI
+        :return: None
+        """
+        self.logger.debug('Marking current track as transcoded')
+        self.current_track.transcoded = True
+        self.current_track.uri = new_uri
+        self.current_track.offset = 0

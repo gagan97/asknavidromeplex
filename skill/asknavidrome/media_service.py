@@ -344,6 +344,22 @@ class MediaService:
             return conn.get_song_uri(song_id)
         return ''
 
+    def get_transcoded_song_uri(self, song_id: str, source: str = 'navidrome', format: str = 'mp3', max_bit_rate: int = 192) -> str:
+        """Get transcoded song URI from the specified source
+
+        :param str song_id: Song ID
+        :param str source: Media source ('navidrome' or 'plex')
+        :param str format: Target format for transcoding (default: 'mp3')
+        :param int max_bit_rate: Maximum bit rate in kbps (default: 192)
+        :return: Transcoded URI or empty string if not supported
+        :rtype: str
+        """
+        conn = self.get_connection_for_source(source)
+        if conn and source == 'navidrome' and hasattr(conn, 'get_transcoded_song_uri'):
+            return conn.get_transcoded_song_uri(song_id, format, max_bit_rate)
+        # Plex doesn't support transcoding in the same way, return empty
+        return ''
+
     def star_entry(self, song_id: str, mode: str, source: str = 'navidrome') -> None:
         """Star an entry in the specified source"""
         conn = self.get_connection_for_source(source)

@@ -540,6 +540,71 @@ class NaviSonicPlayPlaylist(AbstractRequestHandler):
             return controller.start_playback('play', speech, card, track_details, handler_input)
 
 
+class NaviSonicShufflePlaylist(AbstractRequestHandler):
+    """Handle NaviSonicShufflePlaylist
+
+    Shuffle and play the given playlist
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('NaviSonicShufflePlaylist')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        global backgroundProcess
+        logger.debug('In NaviSonicShufflePlaylist')
+
+        # Check if a background process is already running, if it is then terminate the process
+        # in favour of the new process.
+        if backgroundProcess is not None:
+            backgroundProcess.terminate()
+            backgroundProcess.join()
+
+        # Get the requested playlist
+        playlist = get_slot_value_v2(handler_input, 'playlist')
+
+        # Search for a playlist (returns tuple of (id, source) or None)
+        playlist_result = connection.search_playlist(playlist.value)
+
+        if playlist_result is None:
+            text = sanitise_speech_output("I couldn't find the playlist " + str(playlist.value) + ' in the collection.')
+            handler_input.response_builder.speak(text).ask(text)
+
+            return handler_input.response_builder.response
+
+        else:
+            playlist_id, source = playlist_result
+            song_id_list = connection.build_song_list_from_playlist(playlist_id, source)
+
+            if not song_id_list or len(song_id_list) == 0:
+                text = sanitise_speech_output("The playlist " + str(playlist.value) + " appears to be empty.")
+                handler_input.response_builder.speak(text).ask(text)
+                return handler_input.response_builder.response
+
+            # Shuffle the song list
+            random.shuffle(song_id_list)
+
+            play_queue.clear()
+
+            # Work around the Amazon / Alexa 8 second timeout.
+            # Handle playlists with fewer than 2 songs
+            initial_songs = song_id_list[:2] if len(song_id_list) >= 2 else song_id_list
+            remaining_songs = song_id_list[2:] if len(song_id_list) > 2 else []
+
+            controller.enqueue_songs(connection, play_queue, initial_songs, source)
+            if remaining_songs:
+                backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, remaining_songs, source))
+                backgroundProcess.start()
+
+            speech = sanitise_speech_output('Shuffling and playing playlist ' + str(playlist.value))
+            logger.info(speech)
+            card = {'title': 'AskNavidrome',
+                    'text': speech
+                    }
+            track_details = play_queue.get_next_track()
+
+            return controller.start_playback('play', speech, card, track_details, handler_input)
+
+
 class NaviSonicPlayMusicByGenre(AbstractRequestHandler):
     """ Play songs from the given genre
 
@@ -783,7 +848,14 @@ class NaviSonicPlaySong(AbstractRequestHandler):
         return is_intent_name('NaviSonicPlaySong')(handler_input)
 
     def handle(self, handler_input: HandlerInput) -> Response:
+        global backgroundProcess
         logger.debug('In NaviSonicPlaySong')
+
+        # Check if a background process is already running, if it is then terminate the process
+        # in favour of the new process.
+        if backgroundProcess is not None:
+            backgroundProcess.terminate()
+            backgroundProcess.join()
 
         # Get the requested song
         song = get_slot_value_v2(handler_input, 'song')
@@ -800,13 +872,51 @@ class NaviSonicPlaySong(AbstractRequestHandler):
 
         # Get the best match (first result after sorting)
         best_match = song_list[0]
-        song_id = best_match.get('id')
-        source = best_match.get('source', 'navidrome')
         song_title = best_match.get('title', song.value)
         song_artist = best_match.get('artist', 'Unknown Artist')
 
+        # Build list of song IDs with their sources from search results
+        song_id_list = []
+        search_song_ids = set()  # Track IDs to avoid duplicates
+        for song_item in song_list[:int(min_song_count)]:
+            song_id = song_item.get('id')
+            source = song_item.get('source', 'navidrome')
+            song_id_list.append((song_id, source))
+            search_song_ids.add(song_id)
+
+        # If we don't have enough songs, fill up with random songs
+        target_count = int(min_song_count)
+        if len(song_id_list) < target_count:
+            remaining_count = target_count - len(song_id_list)
+            logger.debug(f'Search returned {len(song_id_list)} songs, filling remaining {remaining_count} with random songs')
+
+            random_songs = connection.build_random_song_list(remaining_count * 2)  # Request extra to account for duplicates
+            if random_songs:
+                for random_song in random_songs:
+                    if len(song_id_list) >= target_count:
+                        break
+                    # Handle both tuple and non-tuple formats
+                    if isinstance(random_song, tuple):
+                        r_id, r_source = random_song
+                    else:
+                        r_id, r_source = random_song, 'navidrome'
+
+                    # Avoid duplicates
+                    if r_id not in search_song_ids:
+                        song_id_list.append((r_id, r_source))
+                        search_song_ids.add(r_id)
+
         play_queue.clear()
-        controller.enqueue_songs(connection, play_queue, [song_id], source)
+
+        # Work around the Amazon / Alexa 8 second timeout.
+        # Enqueue first two tracks immediately
+        initial_songs = song_id_list[:2] if len(song_id_list) >= 2 else song_id_list
+        remaining_songs = song_id_list[2:] if len(song_id_list) > 2 else []
+
+        controller.enqueue_songs(connection, play_queue, initial_songs)
+        if remaining_songs:
+            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, remaining_songs))
+            backgroundProcess.start()
 
         speech = sanitise_speech_output(f'Playing {song_title} by {song_artist}')
         logger.info(speech)
@@ -1121,7 +1231,9 @@ class PreviousPlaybackHandler(AbstractRequestHandler):
 class PlaybackFailedEventHandler(AbstractRequestHandler):
     """AudioPlayer.PlaybackFailed Directive received.
 
-    Logging the error and restarting playing with no output speech.
+    Handles playback failures by:
+    1. For Navidrome tracks that haven't been transcoded: Try transcoded MP3 stream
+    2. For already transcoded tracks or Plex tracks: Skip to the next track
     """
 
     def can_handle(self, handler_input: HandlerInput) -> bool:
@@ -1132,16 +1244,37 @@ class PlaybackFailedEventHandler(AbstractRequestHandler):
 
         current_track = play_queue.get_current_track()
         song_id = current_track.id
+        source = getattr(current_track, 'source', 'navidrome')
+        transcoded = getattr(current_track, 'transcoded', False)
 
         # Log failure and track ID
         logger.error(f'Playback Failed: {handler_input.request_envelope.request.error}')
         logger.error(f'Failed playing track with ID: {song_id}')
 
-        # Skip to the next track instead of stopping
-        track_details = play_queue.get_next_track()
+        # Check if we can try transcoding (only for Navidrome and not already transcoded)
+        if source == 'navidrome' and not transcoded:
+            logger.info(f'Attempting to play transcoded stream for track: {song_id}')
 
-        # Set the offset to 0 as we are skipping we want to start at the beginning
-        track_details.offset = 0
+            # Get transcoded URI
+            transcoded_uri = connection.get_transcoded_song_uri(song_id, source)
+
+            if transcoded_uri:
+                # Update the current track with transcoded URI
+                play_queue.mark_current_track_transcoded(transcoded_uri)
+                track_details = play_queue.get_current_track()
+
+                logger.info(f'Playing transcoded track: {track_details.title} by: {track_details.artist}')
+                return controller.start_playback('play', None, None, track_details, handler_input)
+
+        # Either not Navidrome, already transcoded, or transcoding failed
+        # Skip to the next track
+        logger.info('Skipping to next track after playback failure')
+        track_details = play_queue.skip_current_track()
+
+        # Check if we have a valid track
+        if not track_details.id:
+            logger.warning('No more tracks available after playback failure')
+            return handler_input.response_builder.response
 
         return controller.start_playback('play', None, None, track_details, handler_input)
 
@@ -1298,6 +1431,7 @@ sb.add_request_handler(NaviSonicPlayAlbumByArtist())
 sb.add_request_handler(NaviSonicPlaySongByArtist())
 sb.add_request_handler(NaviSonicPlaySong())
 sb.add_request_handler(NaviSonicPlayPlaylist())
+sb.add_request_handler(NaviSonicShufflePlaylist())
 sb.add_request_handler(NaviSonicPlayFavouriteSongs())
 sb.add_request_handler(NaviSonicPlayMusicByGenre())
 sb.add_request_handler(NaviSonicPlayMusicRandom())
