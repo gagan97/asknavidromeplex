@@ -307,7 +307,7 @@ class PlexConnection:
         different results than the direct HTTP-based search methods.
         
         :param str term: The search term
-        :param str section_id: The library section ID to search in (not used with PlexAPI approach)
+        :param str section_id: The library section ID (used for fallback compatibility)
         :param int limit: Maximum number of results
         :return: List of track results
         :rtype: list
@@ -326,41 +326,40 @@ class PlexConnection:
                 return []
             
             # Perform search using PlexAPI's search method
-            # The section.search() method searches within that library section
-            search_results = music_section.search(title=term, limit=limit)
+            # Use general search to match across all metadata fields (title, artist, album)
+            search_results = music_section.search(query=term, limit=limit)
             
-            # Filter to only get track results
+            # Filter and convert track results
             tracks = []
             for result in search_results:
                 # Check if this is a track (not an album or artist)
                 if hasattr(result, 'type') and result.type == 'track':
-                    tracks.append(result)
-            
-            self.logger.debug(f'API client search found {len(tracks)} raw track objects')
-            
-            # Convert PlexAPI track objects to our standardized format
-            if tracks:
-                # Get the raw response data to extract metadata
-                # We'll make a direct HTTP call to get the hub search results
-                # since PlexAPI's search doesn't give us the same format
-                try:
-                    encoded_term = urllib.parse.quote(term)
-                    response = requests.get(
-                        f"{self.base_url}/hubs/search?query={encoded_term}&sectionId={section_id}&limit={limit}",
-                        headers=self.headers,
-                        timeout=10
-                    )
+                    # Convert PlexAPI track object to our standardized format
+                    media = result.media[0] if result.media else None
+                    duration_ms = result.duration if hasattr(result, 'duration') else 0
                     
-                    if response.status_code == 200:
-                        json_data = response.json()
-                        track_hub = self._extract_track_hub(json_data)
-                        
-                        if track_hub and 'Metadata' in track_hub:
-                            parsed_tracks = self._parse_track_metadata(track_hub['Metadata'])
-                            self.logger.debug(f'API client search found {len(parsed_tracks)} tracks')
-                            return parsed_tracks
-                except Exception as e:
-                    self.logger.error(f'Error getting hub search data for API client: {e}')
+                    track_dict = {
+                        'id': str(result.ratingKey) if hasattr(result, 'ratingKey') else None,
+                        'title': result.title if hasattr(result, 'title') else '',
+                        'artist': result.grandparentTitle if hasattr(result, 'grandparentTitle') else '',
+                        'originalArtist': result.originalTitle if hasattr(result, 'originalTitle') else None,
+                        'artistId': str(result.grandparentRatingKey) if hasattr(result, 'grandparentRatingKey') else None,
+                        'album': result.parentTitle if hasattr(result, 'parentTitle') else '',
+                        'albumId': str(result.parentRatingKey) if hasattr(result, 'parentRatingKey') else None,
+                        'duration': duration_ms // 1000 if duration_ms else 0,
+                        'bitRate': media.bitrate if media and hasattr(media, 'bitrate') else 0,
+                        'audioCodec': media.audioCodec if media and hasattr(media, 'audioCodec') else '',
+                        'audioChannels': media.audioChannels if media and hasattr(media, 'audioChannels') else 0,
+                        'track': result.index if hasattr(result, 'index') else 0,
+                        'year': result.year if hasattr(result, 'year') else 0,
+                        'genre': result.genres[0].tag if hasattr(result, 'genres') and result.genres else '',
+                        'guid': result.guid if hasattr(result, 'guid') else '',
+                        'Guid': result.guids if hasattr(result, 'guids') else []
+                    }
+                    tracks.append(track_dict)
+            
+            self.logger.debug(f'API client search found {len(tracks)} tracks')
+            return tracks
             
         except Exception as e:
             self.logger.error(f'Error in API client search: {e}')
