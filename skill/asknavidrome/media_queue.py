@@ -197,10 +197,9 @@ class MediaQueue:
             # Handle loop mode - restore original queue
             if self.playback_mode == self.MODE_LOOP and len(self.original_queue) > 0:
                 self.logger.debug('Loop mode: restoring original queue')
-                # Deep-copy the original queue, but skip tracks that have previously failed
-                restored_queue = deepcopy(self.original_queue)
+                # Filter out tracks that have previously failed, then deep-copy
                 self.queue = deque(
-                    track for track in restored_queue
+                    deepcopy(track) for track in self.original_queue
                     if not getattr(track, "playback_failed", False)
                 )
                 self.history.clear()
