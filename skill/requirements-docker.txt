@@ -3,3 +3,4 @@ ask-sdk
 flask-ask-sdk
 py-sonic
 requests
+PlexAPI~=4.15.6

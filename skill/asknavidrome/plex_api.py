@@ -1,4 +1,5 @@
 import logging
+import os
 import urllib.parse
 from typing import Union
 from difflib import SequenceMatcher
@@ -10,6 +11,14 @@ try:
     SDK_AVAILABLE = True
 except ImportError:
     SDK_AVAILABLE = False
+
+# Try to import official PlexAPI for section lookup
+try:
+    from plexapi.server import PlexServer
+    import plexapi.exceptions
+    PLEXAPI_LIBRARY_AVAILABLE = True
+except ImportError:
+    PLEXAPI_LIBRARY_AVAILABLE = False
 
 
 class PlexConnection:
@@ -52,6 +61,19 @@ class PlexConnection:
         else:
             self.logger.debug('Plex SDK not available, skipping SDK-based search')
 
+        # Initialize official PlexServer for library section lookup if available
+        self._plex_server = None
+        if PLEXAPI_LIBRARY_AVAILABLE:
+            try:
+                self._plex_server = PlexServer(
+                    baseurl=self.base_url,
+                    token=self.token
+                )
+                self.logger.debug('PlexServer initialized successfully for library lookups')
+            except Exception as e:
+                self.logger.warning(f'Failed to initialize PlexServer: {e}')
+                self._plex_server = None
+
         self.logger.debug('PlexConnection initialized')
 
     def ping(self) -> bool:
@@ -80,6 +102,10 @@ class PlexConnection:
 
     def _get_music_library_key(self) -> Union[str, None]:
         """Get the library key for the music library
+        
+        This method first checks for a MUSIC_SECTION environment variable to get
+        the section name, then uses PlexServer to get the section key. If PlexServer
+        is not available, it falls back to the HTTP API approach.
 
         :return: The library key or None if not found
         :rtype: str | None
@@ -91,6 +117,21 @@ class PlexConnection:
         if self._music_library_key:
             return self._music_library_key
 
+        # Try to get section using PlexServer if available and MUSIC_SECTION env var is set
+        music_section_name = os.getenv('MUSIC_SECTION', '')
+        if music_section_name and self._plex_server and PLEXAPI_LIBRARY_AVAILABLE:
+            try:
+                self.logger.info(f'Getting music library section by name: {music_section_name}')
+                section = self._plex_server.library.section(music_section_name)
+                self._music_library_key = section.key
+                self.logger.info(f'Successfully found section "{section.title}" with key {self._music_library_key}')
+                return self._music_library_key
+            except plexapi.exceptions.NotFound:
+                self.logger.error(f'Music section "{music_section_name}" not found in Plex')
+            except Exception as e:
+                self.logger.error(f'Error getting section by name: {e}')
+
+        # Fallback: Use HTTP API to find music library by type
         try:
             response = requests.get(f"{self.base_url}/library/sections", headers=self.headers, timeout=10)
             if response.status_code == 200:
@@ -98,6 +139,7 @@ class PlexConnection:
                 for directory in data.get('MediaContainer', {}).get('Directory', []):
                     if directory.get('type') == 'artist':
                         self._music_library_key = directory.get('key')
+                        self.logger.debug(f'Found music library with key {self._music_library_key} via HTTP API')
                         return self._music_library_key
         except requests.RequestException as e:
             self.logger.error(f'Error getting music library: {e}')
