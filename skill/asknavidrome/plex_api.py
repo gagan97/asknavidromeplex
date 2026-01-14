@@ -4,12 +4,13 @@ from typing import Union
 from difflib import SequenceMatcher
 import requests
 
-# Try to import Plex SDK, but gracefully handle if not available
+# Try to import PlexAPI library for SDK-based search
 try:
-    from plex_api_client import PlexAPI
-    SDK_AVAILABLE = True
+    from plexapi.server import PlexServer
+    import plexapi.exceptions
+    PLEXAPI_AVAILABLE = True
 except ImportError:
-    SDK_AVAILABLE = False
+    PLEXAPI_AVAILABLE = False
 
 
 class PlexConnection:
@@ -37,20 +38,21 @@ class PlexConnection:
         self.prefer_high_bitrate = prefer_high_bitrate
         self._music_library_key = None  # Cache the music library key
 
-        # Initialize Plex SDK if available
-        self._plex_sdk = None
-        if SDK_AVAILABLE:
+        # Initialize PlexAPI SDK if available
+        self._plex_server = None
+        self._music_section = None
+        if PLEXAPI_AVAILABLE:
             try:
-                self._plex_sdk = PlexAPI(
-                    access_token=self.token,
-                    server_url=f"{self.server_url}:{self.port}"
+                self._plex_server = PlexServer(
+                    baseurl=self.base_url,
+                    token=self.token
                 )
-                self.logger.debug('Plex SDK initialized successfully')
+                self.logger.debug('PlexAPI SDK initialized successfully')
             except Exception as e:
-                self.logger.warning(f'Failed to initialize Plex SDK: {e}')
-                self._plex_sdk = None
+                self.logger.warning(f'Failed to initialize PlexAPI SDK: {e}')
+                self._plex_server = None
         else:
-            self.logger.debug('Plex SDK not available, skipping SDK-based search')
+            self.logger.debug('PlexAPI SDK not available, skipping SDK-based search')
 
         self.logger.debug('PlexConnection initialized')
 
@@ -103,6 +105,39 @@ class PlexConnection:
             self.logger.error(f'Error getting music library: {e}')
 
         return None
+
+    def _get_music_section_plexapi(self):
+        """Get the music library section using PlexAPI
+        
+        This method uses the PlexAPI library to get the music section.
+        It tries to find a section with type 'artist' (music library).
+        
+        :return: The music section object or None if not found
+        """
+        if not self._plex_server:
+            return None
+            
+        # Return cached section if available
+        if self._music_section:
+            return self._music_section
+            
+        try:
+            # Get all library sections
+            sections = self._plex_server.library.sections()
+            
+            # Find the music section (type = 'artist')
+            for section in sections:
+                if section.type == 'artist':
+                    self._music_section = section
+                    self.logger.debug(f'Found music section: {section.title} (ID: {section.key})')
+                    return self._music_section
+                    
+            self.logger.warning('No music library section found')
+            return None
+            
+        except Exception as e:
+            self.logger.error(f'Error getting music section via PlexAPI: {e}')
+            return None
 
     def _fuzzy_match(self, s1: str, s2: str) -> float:
         """Calculate similarity between two strings using SequenceMatcher
@@ -266,45 +301,67 @@ class PlexConnection:
         return []
 
     def _perform_api_client_search(self, term: str, section_id: str, limit: int = 20) -> list:
-        """Perform a search using the Plex API SDK client
+        """Perform a search using the PlexAPI library
         
-        This search method uses the official Plex API SDK which may return
+        This search method uses the official PlexAPI library which may return
         different results than the direct HTTP-based search methods.
         
         :param str term: The search term
-        :param str section_id: The library section ID to search in
+        :param str section_id: The library section ID to search in (not used with PlexAPI approach)
         :param int limit: Maximum number of results
         :return: List of track results
         :rtype: list
         """
-        if not self._plex_sdk:
-            self.logger.debug('Plex SDK not available, skipping API client search')
+        if not self._plex_server:
+            self.logger.debug('PlexAPI SDK not available, skipping API client search')
             return []
         
         self.logger.debug(f'Performing API client search for: {term}')
         
         try:
-            # Perform search using SDK
-            search_response = self._plex_sdk.search.perform_search(
-                query=term,
-                section_id=int(section_id),
-                limit=limit
-            )
+            # Get the music section
+            music_section = self._get_music_section_plexapi()
+            if not music_section:
+                self.logger.debug('Music section not available for API client search')
+                return []
             
-            # Extract track results from the search response
-            if search_response and hasattr(search_response, 'raw_response'):
+            # Perform search using PlexAPI's search method
+            # The section.search() method searches within that library section
+            search_results = music_section.search(title=term, limit=limit)
+            
+            # Filter to only get track results
+            tracks = []
+            for result in search_results:
+                # Check if this is a track (not an album or artist)
+                if hasattr(result, 'type') and result.type == 'track':
+                    tracks.append(result)
+            
+            self.logger.debug(f'API client search found {len(tracks)} raw track objects')
+            
+            # Convert PlexAPI track objects to our standardized format
+            if tracks:
+                # Get the raw response data to extract metadata
+                # We'll make a direct HTTP call to get the hub search results
+                # since PlexAPI's search doesn't give us the same format
                 try:
-                    json_data = search_response.raw_response.json()
+                    encoded_term = urllib.parse.quote(term)
+                    response = requests.get(
+                        f"{self.base_url}/hubs/search?query={encoded_term}&sectionId={section_id}&limit={limit}",
+                        headers=self.headers,
+                        timeout=10
+                    )
                     
-                    # Extract track hub data
-                    track_hub = self._extract_track_hub(json_data)
-                    
-                    if track_hub and 'Metadata' in track_hub:
-                        tracks = self._parse_track_metadata(track_hub['Metadata'])
-                        self.logger.debug(f'API client search found {len(tracks)} tracks')
-                        return tracks
-                except (AttributeError, ValueError) as e:
-                    self.logger.error(f'Error parsing API client search response: {e}')
+                    if response.status_code == 200:
+                        json_data = response.json()
+                        track_hub = self._extract_track_hub(json_data)
+                        
+                        if track_hub and 'Metadata' in track_hub:
+                            parsed_tracks = self._parse_track_metadata(track_hub['Metadata'])
+                            self.logger.debug(f'API client search found {len(parsed_tracks)} tracks')
+                            return parsed_tracks
+                except Exception as e:
+                    self.logger.error(f'Error getting hub search data for API client: {e}')
+            
         except Exception as e:
             self.logger.error(f'Error in API client search: {e}')
         
@@ -508,9 +565,9 @@ class PlexConnection:
                     new_count += 1
             self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({new_count} new)')
 
-        # Search method 4: API client search (SDK-based)
-        if library_key and SDK_AVAILABLE and self._plex_sdk:
-            self.logger.debug('Trying API client search (SDK)...')
+        # Search method 4: API client search (PlexAPI SDK-based)
+        if library_key and PLEXAPI_AVAILABLE and self._plex_server:
+            self.logger.debug('Trying API client search (PlexAPI SDK)...')
             api_results = self._perform_api_client_search(term, library_key)
             new_count = 0
             for track in api_results:
