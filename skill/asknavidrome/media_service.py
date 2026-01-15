@@ -31,14 +31,35 @@ class MediaService:
         return success
 
     def _fuzzy_match(self, s1: str, s2: str) -> float:
-        """Calculate similarity between two strings
+        """Calculate similarity between two strings with substring awareness
 
-        :param str s1: First string
-        :param str s2: Second string
-        :return: Similarity ratio (0.0 to 1.0)
+        Prioritizes substring matches (when s2 is contained in s1) over
+        character-level similarity, which works better for short search terms.
+
+        :param str s1: First string (typically the title)
+        :param str s2: Second string (typically the search term)
+        :return: Similarity ratio (0.0 to 1.0+)
         :rtype: float
         """
-        return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+        s1_lower = s1.lower().strip()
+        s2_lower = s2.lower().strip()
+        
+        # Exact match
+        if s1_lower == s2_lower:
+            return 1.0
+        
+        # Substring match: search term is contained in title
+        if s2_lower in s1_lower:
+            # Score based on coverage - shorter titles with the term score higher
+            coverage = len(s2_lower) / len(s1_lower) if s1_lower else 0
+            return 0.7 + (coverage * 0.25)  # Range: 0.7 to 0.95
+        
+        # Prefix match bonus
+        if s1_lower.startswith(s2_lower) or s2_lower.startswith(s1_lower):
+            return 0.65
+        
+        # Fallback to sequence matching for other cases
+        return SequenceMatcher(None, s1_lower, s2_lower).ratio()
 
     def _normalize_string(self, s: str) -> str:
         """Normalize string for better matching
@@ -225,6 +246,54 @@ class MediaService:
 
         return None
 
+    def search_song_from_album(self, song_term: str, album_term: str) -> Union[list, None]:
+        """Search for a song from a specific album across all enabled sources
+
+        :param str song_term: The name of the song
+        :param str album_term: The name of the album
+        :return: A list of songs sorted by relevance, or None
+        :rtype: list | None
+        """
+
+        self.logger.debug(f'Searching for song: {song_term} from album: {album_term}')
+
+        all_results = []
+
+        if self.navidrome and hasattr(self.navidrome, 'search_song_from_album'):
+            result = self.navidrome.search_song_from_album(song_term, album_term)
+            if result:
+                for r in result:
+                    r['source'] = 'navidrome'
+                all_results.extend(result)
+
+        if self.plex and hasattr(self.plex, 'search_song_from_album'):
+            result = self.plex.search_song_from_album(song_term, album_term)
+            if result:
+                for r in result:
+                    r['source'] = 'plex'
+                all_results.extend(result)
+
+        if all_results:
+            # Apply bitrate preference if enabled
+            all_results = self._select_highest_bitrate(all_results)
+
+            # Sort by combined song + album match score
+            normalized_song = self._normalize_string(song_term)
+            normalized_album = self._normalize_string(album_term)
+            
+            def combined_score(x):
+                title_score = self._fuzzy_match(self._normalize_string(x.get('title', '')), normalized_song)
+                album_score = self._fuzzy_match(self._normalize_string(x.get('album', '')), normalized_album)
+                # Weight title match more heavily, but album match adds significant bonus
+                return title_score + (album_score * 0.5)
+            
+            all_results.sort(key=combined_score, reverse=True)
+
+            return all_results
+
+        # Fallback: try regular song search if album-specific search failed
+        return self.search_song(song_term)
+
     def search_playlist(self, term: str) -> Union[tuple, None]:
         """Search for a playlist across all enabled sources
 
@@ -355,9 +424,8 @@ class MediaService:
         :rtype: str
         """
         conn = self.get_connection_for_source(source)
-        if conn and source == 'navidrome' and hasattr(conn, 'get_transcoded_song_uri'):
+        if conn and hasattr(conn, 'get_transcoded_song_uri'):
             return conn.get_transcoded_song_uri(song_id, format, max_bit_rate)
-        # Plex doesn't support transcoding in the same way, return empty
         return ''
 
     def star_entry(self, song_id: str, mode: str, source: str = 'navidrome') -> None:

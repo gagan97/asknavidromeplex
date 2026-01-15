@@ -2,13 +2,15 @@ FROM alpine:3.22.1 AS build
 LABEL maintainer="Gagan Gupta <gagan97@yahoo.com>"
 LABEL org.opencontainers.image.source=https://github.com/gagan97/asknavidromeplex
 
-RUN apk add python3 py3-pip git build-base python3-dev libffi-dev openssl-dev
+RUN apk add python3 py3-pip build-base python3-dev libffi-dev openssl-dev
 
 WORKDIR /opt
 
 RUN python3 -m venv env
 
-RUN git clone https://github.com/gagan97/asknavidromeplex.git
+# Copy local code instead of cloning from git
+# This allows building from any branch (local checkout or GitHub Actions)
+COPY . /opt/asknavidromeplex
 
 WORKDIR /opt/asknavidromeplex
 

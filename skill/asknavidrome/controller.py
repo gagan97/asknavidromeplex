@@ -1,9 +1,10 @@
 import logging
+import os
 from typing import Union
 
 from ask_sdk_core.handler_input import HandlerInput
 from ask_sdk_model import Response
-from ask_sdk_model.ui import StandardCard
+from ask_sdk_model.ui import StandardCard, Image
 from ask_sdk_model.interfaces.audioplayer import (
     PlayDirective, PlayBehavior, AudioItem, Stream, AudioItemMetadata,
     StopDirective)
@@ -14,6 +15,9 @@ from .subsonic_api import SubsonicConnection
 from .media_queue import MediaQueue
 
 logger = logging.getLogger(__name__)
+
+# App name - configurable via environment variable, defaults to AskNavidromePlex
+APP_NAME = os.getenv('SKILL_NAME', 'AskNavidromePlex')
 
 #
 # Functions
@@ -49,12 +53,17 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
 
         if card_data:
             # Cards are only supported if we are starting a new session
+            # Get art URL from card_data with fallback to default
+            art_url = card_data.get('art_url') or DEFAULT_ART_URL
+            
             handler_input.response_builder.set_card(
                 StandardCard(
-                    title=card_data['title'], text=card_data['text'],
-                    # image=Image(
-                    #    small_image_url=card_data['small_image_url'],
-                    #    large_image_url=card_data['large_image_url'])
+                    title=card_data.get('title', APP_NAME),
+                    text=card_data.get('text', ''),
+                    image=Image(
+                        small_image_url=art_url,
+                        large_image_url=art_url
+                    )
                 )
             )
 
@@ -121,6 +130,10 @@ def stop(handler_input: HandlerInput) -> Response:
     return handler_input.response_builder.response
 
 
+# Default fallback image URL
+DEFAULT_ART_URL = 'https://github.com/navidrome/navidrome/raw/master/resources/logo-192x192.png'
+
+
 def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
     """Add background to card.
 
@@ -134,22 +147,26 @@ def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
     logger.debug('In add_screen_background()')
 
     if card_data:
+        # Use cover art URL from card_data if available, otherwise use default
+        art_url = card_data.get('art_url') or DEFAULT_ART_URL
+        background_url = card_data.get('background_url') or DEFAULT_ART_URL
+        
         metadata = AudioItemMetadata(
-            title=card_data['title'],
-            subtitle=card_data['text'],
+            title=card_data.get('title', APP_NAME),
+            subtitle=card_data.get('text', ''),
             art=display.Image(
-                content_description=card_data['title'],
+                content_description=card_data.get('title', APP_NAME),
                 sources=[
                     display.ImageInstance(
-                        url='https://github.com/navidrome/navidrome/raw/master/resources/logo-192x192.png'
+                        url=art_url
                     )
                 ]
             ),
             background_image=display.Image(
-                content_description=card_data['title'],
+                content_description=card_data.get('title', APP_NAME),
                 sources=[
                     display.ImageInstance(
-                        url='https://github.com/navidrome/navidrome/raw/master/resources/logo-192x192.png'
+                        url=background_url
                     )
                 ]
             )
@@ -185,22 +202,26 @@ def enqueue_songs(api, queue: MediaQueue, song_id_list: list, source: str = 'nav
 
         song_data = song_details.get('song', {})
 
-        # Create track object from song details
-        new_track = Track(song_data.get('id'),
-                          song_data.get('title'),
-                          song_data.get('artist'),
-                          song_data.get('artistId'),
-                          song_data.get('album'),
-                          song_data.get('albumId'),
-                          song_data.get('track'),
-                          song_data.get('year'),
-                          song_data.get('genre'),
-                          song_data.get('duration'),
-                          song_data.get('bitRate'),
-                          song_uri,
-                          0,
-                          None,
-                          song_source)
+        # Create track object from song details with poster URLs
+        new_track = Track(
+            id=song_data.get('id'),
+            title=song_data.get('title'),
+            artist=song_data.get('artist'),
+            artist_id=song_data.get('artistId'),
+            album=song_data.get('album'),
+            album_id=song_data.get('albumId'),
+            track_no=song_data.get('track'),
+            year=song_data.get('year'),
+            genre=song_data.get('genre', ''),
+            duration=song_data.get('duration'),
+            bitrate=song_data.get('bitRate'),
+            uri=song_uri,
+            offset=0,
+            previous_id=None,
+            source=song_source,
+            cover_art_url=song_data.get('coverPosterUrl', ''),
+            background_url=song_data.get('backgroundUrl', '')
+        )
 
         # Add track object to queue
         queue.add_track(new_track)

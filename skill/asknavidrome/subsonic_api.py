@@ -1,10 +1,15 @@
 from hashlib import md5
 from typing import Union
 import logging
+import os
 import random
+import re
 import secrets
 
 import libsonic
+
+# App name - configurable via environment variable, defaults to AskNavidromePlex
+APP_NAME = os.getenv('SKILL_NAME', 'AskNavidromePlex')
 
 
 class SubsonicConnection:
@@ -36,7 +41,7 @@ class SubsonicConnection:
                                         self.passwd,
                                         self.port,
                                         self.api_location,
-                                        'AskNavidrome',
+                                        APP_NAME,
                                         self.api_version,
                                         False)
 
@@ -183,6 +188,110 @@ class SubsonicConnection:
 
         # No results were found
         return None
+
+    def search_song_from_album(self, song_term: str, album_term: str) -> Union[list, None]:
+        """Search for a song from a specific album
+
+        This method searches for songs and filters/boosts results that match the album name.
+
+        :param str song_term: The name of the song
+        :param str album_term: The name of the album
+        :return: A list of songs sorted by relevance (song + album match), or None if no results
+        :rtype: list | None
+        """
+
+        self.logger.debug(f'In function search_song_from_album() - song: {song_term}, album: {album_term}')
+
+        # First search for the song
+        song_results = self.search_song(song_term)
+
+        if not song_results:
+            # Try searching for the album first
+            album_results = self.search_album(album_term)
+            if album_results:
+                # Get the first matching album and search within it
+                album_id = album_results[0].get('id')
+                if album_id:
+                    album_songs = self.conn.getAlbum(album_id)
+                    if album_songs and 'album' in album_songs and 'song' in album_songs['album']:
+                        songs = album_songs['album']['song']
+                        # Filter by song name using both normalized and cleaned strings
+                        normalized_song = song_term.lower()
+                        cleaned_song = self._clean_for_matching(song_term)
+                        matching = [s for s in songs if (
+                            normalized_song in s.get('title', '').lower() or
+                            cleaned_song in self._clean_for_matching(s.get('title', ''))
+                        )]
+                        if matching:
+                            return matching
+            return None
+
+        # Score results with album matching bonus
+        # Use both normalized and cleaned versions for matching
+        normalized_album = album_term.lower()
+        cleaned_album = self._clean_for_matching(album_term)
+        scored_results = []
+
+        for song in song_results:
+            song_album = song.get('album', '')
+            normalized_song_album = song_album.lower()
+            cleaned_song_album = self._clean_for_matching(song_album)
+            
+            # Check if album matches
+            album_bonus = 0.0
+            # Exact substring match (normalized)
+            if normalized_album in normalized_song_album or normalized_song_album in normalized_album:
+                album_bonus = 1.0  # High bonus for album match
+            # Exact substring match (cleaned - handles special chars)
+            elif cleaned_album in cleaned_song_album or cleaned_song_album in cleaned_album:
+                album_bonus = 1.0  # Same high bonus for cleaned match
+            # Fuzzy match (already uses cleaned strings internally)
+            elif self._fuzzy_album_match(song_album, album_term):
+                album_bonus = 0.5  # Partial bonus for fuzzy match
+            
+            scored_results.append((album_bonus, song))
+
+        # Sort by album match score descending
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+
+        self.logger.debug(f'Found {len(scored_results)} songs for song: {song_term}, album: {album_term}')
+
+        return [song for score, song in scored_results]
+
+    def _fuzzy_album_match(self, album1: str, album2: str) -> bool:
+        """Check if two album names are similar enough
+
+        Uses cleaned strings (special chars removed) for better matching 
+        when user speaks album names without punctuation.
+
+        :param str album1: First album name
+        :param str album2: Second album name
+        :return: True if albums are similar
+        :rtype: bool
+        """
+        from difflib import SequenceMatcher
+        # Clean both strings for comparison
+        clean1 = self._clean_for_matching(album1)
+        clean2 = self._clean_for_matching(album2)
+        ratio = SequenceMatcher(None, clean1, clean2).ratio()
+        return ratio > 0.6
+
+    def _clean_for_matching(self, s: str) -> str:
+        """Clean string by removing special characters for fuzzy matching
+
+        This is useful when comparing user-spoken text (no special chars) 
+        against library metadata that may contain special characters like 
+        parentheses, slashes, etc.
+
+        :param str s: Input string
+        :return: Cleaned string with only alphanumeric chars and spaces
+        :rtype: str
+        """
+        if not s:
+            return ""
+        # Remove all non-alphanumeric characters except spaces
+        cleaned = re.sub(r'[^\w\s]', '', s)
+        return cleaned.lower().strip()
 
     def albums_by_artist(self, id: str) -> 'list[dict]':
         """Get the albums for a given artist
@@ -357,7 +466,7 @@ class SubsonicConnection:
         # This creates a multiline f string, uri contains a single line with both
         # f strings.
         uri = (
-            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidrome&u='
+            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c={APP_NAME}&u='
             f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={id}'
         )
 
@@ -382,7 +491,7 @@ class SubsonicConnection:
         auth_token = md5(self.passwd.encode() + salt.encode())
 
         uri = (
-            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidrome&u='
+            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c={APP_NAME}&u='
             f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={id}&format={format}&maxBitRate={max_bit_rate}'
         )
 

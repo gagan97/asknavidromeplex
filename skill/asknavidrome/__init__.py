@@ -1,1 +1,1 @@
-"""The AskNavidrome Module!"""
+"""The AskNavidromePlex Module!"""
