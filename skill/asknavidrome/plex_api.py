@@ -782,7 +782,7 @@ class PlexConnection:
             # This returns a list of plexapi.audio.Track objects
             tracks = music_section.searchTracks(title=term, maxresults=limit)
             
-            self.logger.debug(f'SDK searchTracks found {len(tracks)} tracks')
+            self.logger.debug(f'SDK searchTracks found {tracks} tracks')
             
             # Parse the Track objects into our standardized format
             parsed_tracks = []
