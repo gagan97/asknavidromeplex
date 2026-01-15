@@ -218,6 +218,29 @@ class PlexConnection:
         cleaned = re.sub(r'[^\w\s]', '', s)
         return cleaned.lower().strip()
 
+    def _clean_search_term(self, term: str) -> str:
+        """Clean search term for API queries
+
+        Normalizes quotes, removes extra whitespace, and handles edge cases
+        that might cause issues with search APIs. This keeps apostrophes and
+        other punctuation that might be important for the search.
+
+        :param str term: Raw search term
+        :return: Cleaned search term
+        :rtype: str
+        """
+        if not term:
+            return ""
+        
+        # Replace smart quotes with regular quotes (Alexa voice input might have these)
+        cleaned = term.replace(''', "'").replace(''', "'")
+        cleaned = cleaned.replace('"', '"').replace('"', '"')
+        
+        # Replace curly/fancy apostrophes with straight apostrophe
+        cleaned = cleaned.replace('’', "'")
+        
+        return cleaned.strip()
+
     def _extract_track_hub(self, json_data: dict) -> Union[dict, None]:
         """Extract only the track hub from search results
 
@@ -617,6 +640,8 @@ class PlexConnection:
         :return: List of track results
         :rtype: list
         """
+        # Clean the search term to handle special characters
+        term = self._clean_search_term(term)
         self.logger.debug(f'Performing hub search for: {term}')
 
         try:
@@ -646,6 +671,8 @@ class PlexConnection:
         :return: List of track results
         :rtype: list
         """
+        # Clean the search term to handle special characters
+        term = self._clean_search_term(term)
         self.logger.debug(f'Performing hub search with section {section_id} for: {term}')
 
         try:
@@ -681,6 +708,8 @@ class PlexConnection:
         :return: List of track results
         :rtype: list
         """
+        # Clean the search term to handle special characters
+        term = self._clean_search_term(term)
         self.logger.debug(f'Performing direct library search for: {term}')
 
         try:
@@ -787,6 +816,8 @@ class PlexConnection:
             self.logger.debug('Plex SDK not available, skipping API client search')
             return []
         
+        # Clean the search term to handle special characters
+        term = self._clean_search_term(term)
         self.logger.debug(f'Performing SDK search for: {term}')
         
         try:
@@ -1026,18 +1057,18 @@ class PlexConnection:
         #     self.logger.debug(f'Hub search with section found {len(hub_section_results)} tracks ({new_count} new)')
 
         # Search method 3: Direct library search
-        # if library_key:
-        #     self.logger.debug('Trying direct library search...')
-        #     direct_results = self._perform_direct_library_search(term, library_key)
-        #     new_count = 0
-        #     for track in direct_results:
-        #         track_id = track.get('id')
-        #         if track_id and track_id not in seen_ids:
-        #             seen_ids.add(track_id)
-        #             track['_search_method'] = 'direct'
-        #             all_results.append(track)
-        #             new_count += 1
-        #     self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({new_count} new)')
+        if library_key:
+            self.logger.debug('Trying direct library search...')
+            direct_results = self._perform_direct_library_search(term, library_key)
+            new_count = 0
+            for track in direct_results:
+                track_id = track.get('id')
+                if track_id and track_id not in seen_ids:
+                    seen_ids.add(track_id)
+                    track['_search_method'] = 'direct'
+                    all_results.append(track)
+                    new_count += 1
+            self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({new_count} new)')
 
         # Search method 4: Official plexapi SDK-based search
         if library_key and self._plex_sdk:
@@ -1067,6 +1098,9 @@ class PlexConnection:
         """
 
         self.logger.debug('In function search_artist()')
+
+        # Clean the search term to handle special characters
+        term = self._clean_search_term(term)
 
         try:
             encoded_term = urllib.parse.quote(term)
@@ -1101,6 +1135,9 @@ class PlexConnection:
         """
 
         self.logger.debug('In function search_album()')
+
+        # Clean the search term to handle special characters
+        term = self._clean_search_term(term)
 
         try:
             encoded_term = urllib.parse.quote(term)
@@ -1167,6 +1204,9 @@ class PlexConnection:
         """
 
         self.logger.debug('In function search_song_simple()')
+
+        # Clean the search term to handle special characters
+        term = self._clean_search_term(term)
 
         try:
             encoded_term = urllib.parse.quote(term)
@@ -1509,6 +1549,9 @@ class PlexConnection:
         """
 
         self.logger.debug('In function search_playlist()')
+
+        # Clean the search term to handle special characters
+        term = self._clean_search_term(term)
 
         try:
             response = requests.get(
