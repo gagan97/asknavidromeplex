@@ -3,6 +3,7 @@ from typing import Union
 import logging
 import os
 import random
+import re
 import secrets
 
 import libsonic
@@ -214,25 +215,38 @@ class SubsonicConnection:
                     album_songs = self.conn.getAlbum(album_id)
                     if album_songs and 'album' in album_songs and 'song' in album_songs['album']:
                         songs = album_songs['album']['song']
-                        # Filter by song name
+                        # Filter by song name using both normalized and cleaned strings
                         normalized_song = song_term.lower()
-                        matching = [s for s in songs if normalized_song in s.get('title', '').lower()]
+                        cleaned_song = self._clean_for_matching(song_term)
+                        matching = [s for s in songs if (
+                            normalized_song in s.get('title', '').lower() or
+                            cleaned_song in self._clean_for_matching(s.get('title', ''))
+                        )]
                         if matching:
                             return matching
             return None
 
         # Score results with album matching bonus
+        # Use both normalized and cleaned versions for matching
         normalized_album = album_term.lower()
+        cleaned_album = self._clean_for_matching(album_term)
         scored_results = []
 
         for song in song_results:
-            song_album = song.get('album', '').lower()
+            song_album = song.get('album', '')
+            normalized_song_album = song_album.lower()
+            cleaned_song_album = self._clean_for_matching(song_album)
             
             # Check if album matches
             album_bonus = 0.0
-            if normalized_album in song_album or song_album in normalized_album:
+            # Exact substring match (normalized)
+            if normalized_album in normalized_song_album or normalized_song_album in normalized_album:
                 album_bonus = 1.0  # High bonus for album match
-            elif self._fuzzy_album_match(song_album, normalized_album):
+            # Exact substring match (cleaned - handles special chars)
+            elif cleaned_album in cleaned_song_album or cleaned_song_album in cleaned_album:
+                album_bonus = 1.0  # Same high bonus for cleaned match
+            # Fuzzy match (already uses cleaned strings internally)
+            elif self._fuzzy_album_match(song_album, album_term):
                 album_bonus = 0.5  # Partial bonus for fuzzy match
             
             scored_results.append((album_bonus, song))
@@ -247,14 +261,37 @@ class SubsonicConnection:
     def _fuzzy_album_match(self, album1: str, album2: str) -> bool:
         """Check if two album names are similar enough
 
+        Uses cleaned strings (special chars removed) for better matching 
+        when user speaks album names without punctuation.
+
         :param str album1: First album name
         :param str album2: Second album name
         :return: True if albums are similar
         :rtype: bool
         """
         from difflib import SequenceMatcher
-        ratio = SequenceMatcher(None, album1.lower(), album2.lower()).ratio()
+        # Clean both strings for comparison
+        clean1 = self._clean_for_matching(album1)
+        clean2 = self._clean_for_matching(album2)
+        ratio = SequenceMatcher(None, clean1, clean2).ratio()
         return ratio > 0.6
+
+    def _clean_for_matching(self, s: str) -> str:
+        """Clean string by removing special characters for fuzzy matching
+
+        This is useful when comparing user-spoken text (no special chars) 
+        against library metadata that may contain special characters like 
+        parentheses, slashes, etc.
+
+        :param str s: Input string
+        :return: Cleaned string with only alphanumeric chars and spaces
+        :rtype: str
+        """
+        if not s:
+            return ""
+        # Remove all non-alphanumeric characters except spaces
+        cleaned = re.sub(r'[^\w\s]', '', s)
+        return cleaned.lower().strip()
 
     def albums_by_artist(self, id: str) -> 'list[dict]':
         """Get the albums for a given artist

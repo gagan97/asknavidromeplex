@@ -1,10 +1,12 @@
 from datetime import datetime
+from difflib import SequenceMatcher
 from flask import Flask, render_template
 import logging
 from multiprocessing import Process
 from multiprocessing.managers import BaseManager
 import os
 import random
+import re
 import sys
 
 from ask_sdk_core.skill_builder import SkillBuilder
@@ -480,11 +482,40 @@ class NaviSonicPlaySongByArtist(AbstractRequestHandler):
                 handler_input.response_builder.speak(text).ask(text)
                 return handler_input.response_builder.response
 
-            # Search for song by given artist.
-            matching_songs = [(item.get('id'), item.get('source', 'navidrome'))
-                              for item in song_list
-                              if item.get('artistId') == artist_id or
-                              item.get('artist', '').lower() == artist.value.lower()]
+            # Search for song by given artist using fuzzy matching
+            # The artist name from voice may not exactly match (e.g., "huntrix" vs "HUNTR/X")
+            normalized_artist = artist.value.lower().strip()
+            matching_songs = []
+            
+            for item in song_list:
+                item_artist = item.get('artist', '').lower()
+                item_original_artist = item.get('originalArtist', '').lower()
+                item_artist_id = item.get('artistId')
+                
+                # Check for exact artistId match
+                if item_artist_id == artist_id:
+                    matching_songs.append((item.get('id'), item.get('source', 'navidrome')))
+                    continue
+                
+                # Check if search term is contained in artist name (substring match)
+                if normalized_artist in item_artist or normalized_artist in item_original_artist:
+                    matching_songs.append((item.get('id'), item.get('source', 'navidrome')))
+                    continue
+                
+                # Check if artist name starts with or contains key part of search term
+                # Handle cases like "huntrix" matching "HUNTR/X (Ejae, AUDREY NUNA & REI AMI)"
+                # Remove special characters for comparison
+                clean_artist = re.sub(r'[^a-z0-9\s]', '', item_artist)
+                clean_search = re.sub(r'[^a-z0-9\s]', '', normalized_artist)
+                
+                if clean_search in clean_artist or clean_artist.startswith(clean_search):
+                    matching_songs.append((item.get('id'), item.get('source', 'navidrome')))
+                    continue
+                
+                # Fuzzy match as last resort
+                similarity = SequenceMatcher(None, clean_search, clean_artist.split()[0] if clean_artist else '').ratio()
+                if similarity > 0.7:
+                    matching_songs.append((item.get('id'), item.get('source', 'navidrome')))
 
             if not matching_songs:
                 text = sanitise_speech_output(f"I couldn't find a song called {song.value} by {artist.value} in the collection.")

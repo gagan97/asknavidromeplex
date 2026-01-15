@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import urllib.parse
 from typing import Union, Optional, List, Any
 from difflib import SequenceMatcher
@@ -199,6 +200,23 @@ class PlexConnection:
         if s.startswith('the '):
             s = s[4:]
         return s
+
+    def _clean_for_matching(self, s: str) -> str:
+        """Clean string by removing special characters for fuzzy matching
+
+        This is useful when comparing user-spoken text (no special chars) 
+        against library metadata that may contain special characters like 
+        parentheses, slashes, etc.
+
+        :param str s: Input string
+        :return: Cleaned string with only alphanumeric chars and spaces
+        :rtype: str
+        """
+        if not s:
+            return ""
+        # Remove all non-alphanumeric characters except spaces
+        cleaned = re.sub(r'[^\w\s]', '', s)
+        return cleaned.lower().strip()
 
     def _extract_track_hub(self, json_data: dict) -> Union[dict, None]:
         """Extract only the track hub from search results
@@ -1199,12 +1217,17 @@ class PlexConnection:
                 if album_id:
                     album_tracks = self._get_album_tracks(album_id)
                     if album_tracks:
-                        # Filter tracks by song name
+                        # Filter tracks by song name using cleaned strings for better matching
                         normalized_song = self._normalize_string(song_term)
+                        cleaned_song = self._clean_for_matching(song_term)
                         matching_tracks = []
                         for track in album_tracks:
-                            track_title = self._normalize_string(track.get('title', ''))
-                            if normalized_song in track_title or track_title in normalized_song:
+                            track_title = track.get('title', '')
+                            normalized_title = self._normalize_string(track_title)
+                            cleaned_title = self._clean_for_matching(track_title)
+                            # Match using both normalized and cleaned versions
+                            if (normalized_song in normalized_title or normalized_title in normalized_song or
+                                cleaned_song in cleaned_title or cleaned_title in cleaned_song):
                                 matching_tracks.append(track)
                         if matching_tracks:
                             return matching_tracks
@@ -1212,20 +1235,30 @@ class PlexConnection:
             return None
 
         # Re-score results with album matching bonus
+        # Use both normalized and cleaned versions for matching
         normalized_album = self._normalize_string(album_term)
+        cleaned_album = self._clean_for_matching(album_term)
         scored_results = []
 
         for track in results:
-            track_album = self._normalize_string(track.get('album', ''))
+            track_album = track.get('album', '')
+            normalized_track_album = self._normalize_string(track_album)
+            cleaned_track_album = self._clean_for_matching(track_album)
             
             # Calculate base score from title match
             base_score = self._calculate_match_score(track, song_term)
             
             # Add album matching bonus
             album_bonus = 0.0
-            if normalized_album in track_album or track_album in normalized_album:
+            
+            # Check exact match (normalized)
+            if normalized_album in normalized_track_album or normalized_track_album in normalized_album:
                 album_bonus = 0.5  # Significant bonus for album match
-            elif self._fuzzy_match(track_album, normalized_album) > 0.6:
+            # Check cleaned match (handles special characters like "80's Hits" vs "80s Hits")
+            elif cleaned_album in cleaned_track_album or cleaned_track_album in cleaned_album:
+                album_bonus = 0.5  # Same bonus for cleaned match
+            # Check fuzzy match on cleaned strings
+            elif self._fuzzy_match(cleaned_track_album, cleaned_album) > 0.6:
                 album_bonus = 0.3  # Partial bonus for fuzzy album match
             
             total_score = base_score + album_bonus
