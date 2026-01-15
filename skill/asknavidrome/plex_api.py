@@ -819,14 +819,25 @@ class PlexConnection:
             if log_details:
                 self.logger.debug(f'  └─ Title: EXACT MATCH (score: 1.0)')
         else:
-            score = self._fuzzy_match(track_title, normalized_term)
-            if log_details:
-                self.logger.debug(f'  └─ Title fuzzy match: {score:.3f} ("{track_title}" vs "{normalized_term}")')
+            # Check if search term is contained in title (substring match)
+            # This is more important than fuzzy similarity for short search terms
+            if normalized_term in track_title:
+                # Substring match - score based on how much of the title the term covers
+                # Longer titles with the term get slightly lower scores than shorter ones
+                coverage = len(normalized_term) / len(track_title) if track_title else 0
+                score = 0.7 + (coverage * 0.25)  # Range: 0.7 to 0.95 based on coverage
+                if log_details:
+                    self.logger.debug(f'  └─ Title CONTAINS search term: {score:.3f} (coverage: {coverage:.2f}, "{track_title}" contains "{normalized_term}")')
+            else:
+                # Fallback to fuzzy match only when no substring match
+                score = self._fuzzy_match(track_title, normalized_term)
+                if log_details:
+                    self.logger.debug(f'  └─ Title fuzzy match: {score:.3f} ("{track_title}" vs "{normalized_term}")')
 
         # Boost score for prefix matches
         prefix_bonus = 0.0
         if track_title.startswith(normalized_term) or normalized_term.startswith(track_title):
-            prefix_bonus = 0.1
+            prefix_bonus = 0.15  # Increased bonus for prefix matches
             score += prefix_bonus
             if log_details:
                 self.logger.debug(f'  └─ Prefix match bonus: +{prefix_bonus}')
@@ -849,6 +860,17 @@ class PlexConnection:
             score += artist_bonus
             if log_details:
                 self.logger.debug(f'  └─ Artist match: {artist_score:.3f}, bonus: +{artist_bonus:.3f} ("{track_artist}" vs "{normalized_artist}")')
+
+        # Check if search term appears in artist name (even without explicit artist search)
+        # This helps when someone searches for "ranu" and it's in the artist name "Ranu Mondal"
+        track_artist = self._normalize_string(track.get('artist', ''))
+        original_artist = self._normalize_string(track.get('originalArtist', ''))
+        term_in_artist_bonus = 0.0
+        if normalized_term in track_artist or normalized_term in original_artist:
+            term_in_artist_bonus = 0.25  # Significant bonus for term appearing in artist
+            score += term_in_artist_bonus
+            if log_details:
+                self.logger.debug(f'  └─ Search term found in artist: +{term_in_artist_bonus} ("{normalized_term}" in "{track_artist or original_artist}")')
 
         # Bitrate bonus when prefer_high_bitrate is enabled
         bitrate_bonus = 0.0
