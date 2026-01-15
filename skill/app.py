@@ -290,6 +290,26 @@ class HelpHandler(AbstractRequestHandler):
         return handler_input.response_builder.response
 
 
+class FallbackIntentHandler(AbstractRequestHandler):
+    """Handle AMAZON.FallbackIntent
+
+    This is triggered when Alexa doesn't understand the user's request,
+    or when the user says the invocation word while already in the skill.
+    We respond with "Ready!" to indicate the skill is listening.
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('AMAZON.FallbackIntent')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In FallbackIntentHandler')
+
+        speech = sanitise_speech_output('Ready!')
+        handler_input.response_builder.speak(speech).ask(speech)
+
+        return handler_input.response_builder.response
+
+
 class NaviSonicPlayMusicByArtist(AbstractRequestHandler):
     """Handle NaviSonicPlayMusicByArtist
 
@@ -1601,6 +1621,7 @@ sb.add_request_handler(LaunchRequestHandler())
 sb.add_request_handler(CheckAudioInterfaceHandler())
 sb.add_request_handler(SkillEventHandler())
 sb.add_request_handler(HelpHandler())
+sb.add_request_handler(FallbackIntentHandler())
 sb.add_request_handler(NaviSonicPlayMusicByArtist())
 sb.add_request_handler(NaviSonicPlayAlbumByArtist())
 sb.add_request_handler(NaviSonicPlaySongByArtist())
