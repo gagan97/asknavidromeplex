@@ -984,18 +984,18 @@ class PlexConnection:
             self.logger.debug(f'Hub search with section found {len(hub_section_results)} tracks ({new_count} new)')
 
         # Search method 3: Direct library search
-        if library_key:
-            self.logger.debug('Trying direct library search...')
-            direct_results = self._perform_direct_library_search(term, library_key)
-            new_count = 0
-            for track in direct_results:
-                track_id = track.get('id')
-                if track_id and track_id not in seen_ids:
-                    seen_ids.add(track_id)
-                    track['_search_method'] = 'direct'
-                    all_results.append(track)
-                    new_count += 1
-            self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({new_count} new)')
+        # if library_key:
+        #     self.logger.debug('Trying direct library search...')
+        #     direct_results = self._perform_direct_library_search(term, library_key)
+        #     new_count = 0
+        #     for track in direct_results:
+        #         track_id = track.get('id')
+        #         if track_id and track_id not in seen_ids:
+        #             seen_ids.add(track_id)
+        #             track['_search_method'] = 'direct'
+        #             all_results.append(track)
+        #             new_count += 1
+        #     self.logger.debug(f'Direct library search found {len(direct_results)} tracks ({new_count} new)')
 
         # Search method 4: Official plexapi SDK-based search
         if library_key and self._plex_sdk:
