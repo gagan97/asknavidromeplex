@@ -146,6 +146,27 @@
                     ]
                 },
                 {
+                    "name": "NaviSonicPlaySongFromAlbum",
+                    "slots": [
+                        {
+                            "name": "song",
+                            "type": "AMAZON.MusicRecording"
+                        },
+                        {
+                            "name": "album",
+                            "type": "AMAZON.MusicAlbum"
+                        }
+                    ],
+                    "samples": [
+                        "Play {song} from {album}",
+                        "Play {song} from the album {album}",
+                        "Play the song {song} from {album}",
+                        "Play the song {song} from the album {album}",
+                        "Play {song} on {album}",
+                        "Play {song} on the album {album}"
+                    ]
+                },
+                {
                     "name": "NaviSonicPlaySong",
                     "slots": [
                         {

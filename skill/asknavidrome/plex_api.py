@@ -980,6 +980,8 @@ class PlexConnection:
 
         library_key = self._get_music_library_key()
 
+        ## commenting out all other search methods except SDK for now
+
         # Search method 1: Hub search (global)
         # self.logger.debug('Trying hub search...')
         # hub_results = self._perform_hub_search(term)
@@ -992,18 +994,18 @@ class PlexConnection:
         # self.logger.debug(f'Hub search found {len(hub_results)} tracks')
 
         # Search method 2: Hub search with section ID
-        if library_key:
-            self.logger.debug('Trying hub search with section ID...')
-            hub_section_results = self._perform_hub_search_with_section(term, library_key)
-            new_count = 0
-            for track in hub_section_results:
-                track_id = track.get('id')
-                if track_id and track_id not in seen_ids:
-                    seen_ids.add(track_id)
-                    track['_search_method'] = 'hub_section'
-                    all_results.append(track)
-                    new_count += 1
-            self.logger.debug(f'Hub search with section found {len(hub_section_results)} tracks ({new_count} new)')
+        # if library_key:
+        #     self.logger.debug('Trying hub search with section ID...')
+        #     hub_section_results = self._perform_hub_search_with_section(term, library_key)
+        #     new_count = 0
+        #     for track in hub_section_results:
+        #         track_id = track.get('id')
+        #         if track_id and track_id not in seen_ids:
+        #             seen_ids.add(track_id)
+        #             track['_search_method'] = 'hub_section'
+        #             all_results.append(track)
+        #             new_count += 1
+        #     self.logger.debug(f'Hub search with section found {len(hub_section_results)} tracks ({new_count} new)')
 
         # Search method 3: Direct library search
         # if library_key:
@@ -1171,6 +1173,100 @@ class PlexConnection:
             self.logger.error(f'Error searching song: {e}')
 
         return None
+
+    def search_song_from_album(self, song_term: str, album_term: str) -> Union[list, None]:
+        """Search for a song from a specific album
+
+        This method searches for songs and filters/boosts results that match the album name.
+
+        :param str song_term: The name of the song
+        :param str album_term: The name of the album
+        :return: A list of songs sorted by relevance (song + album match), or None if no results
+        :rtype: list | None
+        """
+
+        self.logger.debug(f'In function search_song_from_album() - song: {song_term}, album: {album_term}')
+
+        # First search for the song
+        results = self._aggregate_search_results(song_term)
+
+        if not results:
+            # Try searching for the album and get its tracks
+            album_results = self.search_album(album_term)
+            if album_results:
+                # Get tracks from the first matching album
+                album_id = album_results[0].get('id')
+                if album_id:
+                    album_tracks = self._get_album_tracks(album_id)
+                    if album_tracks:
+                        # Filter tracks by song name
+                        normalized_song = self._normalize_string(song_term)
+                        matching_tracks = []
+                        for track in album_tracks:
+                            track_title = self._normalize_string(track.get('title', ''))
+                            if normalized_song in track_title or track_title in normalized_song:
+                                matching_tracks.append(track)
+                        if matching_tracks:
+                            return matching_tracks
+
+            return None
+
+        # Re-score results with album matching bonus
+        normalized_album = self._normalize_string(album_term)
+        scored_results = []
+
+        for track in results:
+            track_album = self._normalize_string(track.get('album', ''))
+            
+            # Calculate base score from title match
+            base_score = self._calculate_match_score(track, song_term)
+            
+            # Add album matching bonus
+            album_bonus = 0.0
+            if normalized_album in track_album or track_album in normalized_album:
+                album_bonus = 0.5  # Significant bonus for album match
+            elif self._fuzzy_match(track_album, normalized_album) > 0.6:
+                album_bonus = 0.3  # Partial bonus for fuzzy album match
+            
+            total_score = base_score + album_bonus
+            scored_results.append((total_score, track))
+
+        # Sort by score descending
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+
+        self.logger.debug(f'Found {len(scored_results)} songs for song: {song_term}, album: {album_term}')
+        
+        # Log top results
+        for idx, (score, track) in enumerate(scored_results[:3], 1):
+            self.logger.debug(f'  #{idx} [Score: {score:.3f}] "{track.get("title")}" from "{track.get("album")}"')
+
+        return [track for score, track in scored_results]
+
+    def _get_album_tracks(self, album_id: str) -> list:
+        """Get all tracks from an album
+
+        :param str album_id: The album rating key
+        :return: List of track dictionaries
+        :rtype: list
+        """
+        self.logger.debug(f'Getting tracks for album: {album_id}')
+
+        try:
+            response = requests.get(
+                f"{self.base_url}/library/metadata/{album_id}/children",
+                headers=self.headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                metadata = data.get('MediaContainer', {}).get('Metadata', [])
+                if metadata:
+                    return self._parse_track_metadata(metadata)
+        except requests.RequestException as e:
+            self.logger.error(f'Error getting album tracks: {e}')
+
+        return []
 
     def albums_by_artist(self, artist_id: str) -> list:
         """Get albums for a given artist
@@ -1530,6 +1626,47 @@ class PlexConnection:
             )
         except requests.RequestException as e:
             self.logger.error(f'Error unstarring entry: {e}')
+
+    def get_transcoded_song_uri(self, song_id: str, format: str = 'mp3', max_bit_rate: int = 192) -> str:
+        """Create a transcoded URI for a given song
+
+        Creates a URI for the song with transcoding parameters.
+        This is useful when the original format (e.g., FLAC) is not playable on certain devices.
+        Plex uses the universal transcoder endpoint for audio transcoding.
+
+        :param str song_id: A song rating key
+        :param str format: Target format for transcoding (default: 'mp3')
+        :param int max_bit_rate: Maximum bit rate in kbps (default: 192)
+        :return: A properly formatted URI with transcoding parameters
+        :rtype: str
+        """
+
+        self.logger.debug(f'In function get_transcoded_song_uri() - format: {format}, bitrate: {max_bit_rate}')
+
+        try:
+            # Plex universal transcoder endpoint for audio
+            # This converts audio to the specified format on-the-fly
+            path = f"/library/metadata/{song_id}"
+            
+            # Build the transcode URL
+            transcode_uri = (
+                f"{self.base_url}/music/:/transcode/universal/start.{format}"
+                f"?path={urllib.parse.quote(path)}"
+                f"&mediaIndex=0"
+                f"&partIndex=0"
+                f"&protocol=http"
+                f"&maxAudioBitrate={max_bit_rate}"
+                f"&directPlay=0"
+                f"&directStream=0"
+                f"&X-Plex-Token={self.token}"
+            )
+
+            self.logger.debug(f'Transcoded URI: {transcode_uri}')
+            return transcode_uri
+
+        except Exception as e:
+            self.logger.error(f'Error creating transcoded URI: {e}')
+            return ''
 
     def scrobble(self, track_id: str, time: int) -> None:
         """Scrobble/mark as played

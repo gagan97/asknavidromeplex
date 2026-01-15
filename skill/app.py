@@ -43,7 +43,10 @@ logger.addHandler(handler)
 # Get service configuration
 #
 
-logger.info('AskNavidromePlex 1.0 - Multi-source media player!')
+# App name - configurable via environment variable, defaults to AskNavidromePlex
+APP_NAME = os.getenv('SKILL_NAME', 'AskNavidromePlex')
+
+logger.info(f'{APP_NAME} 1.0 - Multi-source media player!')
 logger.debug('Getting configuration from the environment...')
 
 try:
@@ -180,7 +183,7 @@ logger.debug('MediaQueue object created...')
 # at the same time.
 backgroundProcess = None
 
-logger.info('AskNavidromePlex Web Service is ready to start!')
+logger.info(f'{APP_NAME} Web Service is ready to start!')
 
 
 def build_card_data(speech: str, track_details=None) -> dict:
@@ -192,7 +195,7 @@ def build_card_data(speech: str, track_details=None) -> dict:
     :rtype: dict
     """
     card = {
-        'title': 'AskNavidromePlex',
+        'title': APP_NAME,
         'text': speech,
         'art_url': None,
         'background_url': None
@@ -279,7 +282,7 @@ class HelpHandler(AbstractRequestHandler):
     def handle(self, handler_input: HandlerInput) -> Response:
         logger.debug('In HelpHandler')
 
-        text = sanitise_speech_output('AskNavidromePlex lets you interact with media servers that offer a Subsonic compatible A.P.I.')
+        text = sanitise_speech_output(f'{APP_NAME} lets you interact with media servers that offer a Subsonic compatible A.P.I.')
         handler_input.response_builder.speak(text)
 
         return handler_input.response_builder.response
@@ -331,7 +334,7 @@ class NaviSonicPlayMusicByArtist(AbstractRequestHandler):
             backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
             backgroundProcess.start()  # Start the additional thread
 
-            speech = sanitise_speech_output(f'Playing music by: {artist.value}')
+            speech = sanitise_speech_output(f'Playing music by: {truncate_for_speech(artist.value, max_length=50)}')
             logger.info(speech)
 
             play_queue.shuffle()
@@ -400,7 +403,7 @@ class NaviSonicPlayAlbumByArtist(AbstractRequestHandler):
                 backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
                 backgroundProcess.start()  # Start the additional thread
 
-                speech = sanitise_speech_output(f'Playing {album.value} by: {artist.value}')
+                speech = sanitise_speech_output(f'Playing {truncate_for_speech(album.value, max_length=50)} by: {truncate_for_speech(artist.value, max_length=40)}')
                 logger.info(speech)
                 track_details = play_queue.get_next_track()
                 card = build_card_data(speech, track_details)
@@ -429,7 +432,7 @@ class NaviSonicPlayAlbumByArtist(AbstractRequestHandler):
                 backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, song_id_list[2:], source))  # Create a thread to enqueue the remaining tracks
                 backgroundProcess.start()  # Start the additional thread
 
-                speech = sanitise_speech_output(f'Playing {album.value}')
+                speech = sanitise_speech_output(f'Playing {truncate_for_speech(album.value, max_length=60)}')
                 logger.info(speech)
                 track_details = play_queue.get_next_track()
                 card = build_card_data(speech, track_details)
@@ -495,12 +498,103 @@ class NaviSonicPlaySongByArtist(AbstractRequestHandler):
             song_ids = [m[0] for m in matching_songs]
             controller.enqueue_songs(connection, play_queue, song_ids, song_source)
 
-            speech = sanitise_speech_output(f'Playing {song.value} by {artist.value}')
+            # Truncate for speech to avoid overly long announcements
+            speech_song = truncate_for_speech(song.value, max_length=50)
+            speech_artist = truncate_for_speech(artist.value, max_length=40)
+            speech = sanitise_speech_output(f'Playing {speech_song} by {speech_artist}')
             logger.info(speech)
             track_details = play_queue.get_next_track()
             card = build_card_data(speech, track_details)
 
             return controller.start_playback('play', speech, card, track_details, handler_input)
+
+
+class NaviSonicPlaySongFromAlbum(AbstractRequestHandler):
+    """Handle NaviSonicPlaySongFromAlbum Intent
+
+    Play a song from a specific album
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_intent_name('NaviSonicPlaySongFromAlbum')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        global backgroundProcess
+        logger.debug('In NaviSonicPlaySongFromAlbum')
+
+        # Check if a background process is already running
+        if backgroundProcess is not None:
+            backgroundProcess.terminate()
+            backgroundProcess.join()
+
+        # Get the requested song and album
+        song = get_slot_value_v2(handler_input, 'song')
+        album = get_slot_value_v2(handler_input, 'album')
+
+        logger.debug(f'Searching for song: {song.value} from album: {album.value}')
+
+        # Search for the song with album context
+        song_list = connection.search_song_from_album(song.value, album.value)
+
+        if song_list is None or len(song_list) == 0:
+            text = sanitise_speech_output(f"I couldn't find the song {song.value} from the album {album.value} in the collection.")
+            handler_input.response_builder.speak(text).ask(text)
+            return handler_input.response_builder.response
+
+        # Get the best match (first result after sorting)
+        best_match = song_list[0]
+        song_title = best_match.get('title', song.value)
+        song_artist = best_match.get('artist', 'Unknown Artist')
+        song_album = best_match.get('album', album.value)
+
+        # Build list of song IDs with their sources from search results
+        song_id_list = []
+        search_song_ids = set()
+        for song_item in song_list[:int(min_song_count)]:
+            song_id = song_item.get('id')
+            source = song_item.get('source', 'navidrome')
+            song_id_list.append((song_id, source))
+            search_song_ids.add(song_id)
+
+        # If we don't have enough songs, fill up with random songs
+        target_count = int(min_song_count)
+        if len(song_id_list) < target_count:
+            remaining_count = target_count - len(song_id_list)
+            logger.debug(f'Search returned {len(song_id_list)} songs, filling remaining {remaining_count} with random songs')
+
+            random_songs = connection.build_random_song_list(remaining_count * 2)
+            if random_songs:
+                for random_song in random_songs:
+                    if len(song_id_list) >= target_count:
+                        break
+                    if isinstance(random_song, tuple):
+                        r_id, r_source = random_song
+                    else:
+                        r_id, r_source = random_song, 'navidrome'
+                    if r_id not in search_song_ids:
+                        song_id_list.append((r_id, r_source))
+                        search_song_ids.add(r_id)
+
+        play_queue.clear()
+
+        # Enqueue first two tracks immediately (8-second timeout workaround)
+        initial_songs = song_id_list[:2] if len(song_id_list) >= 2 else song_id_list
+        remaining_songs = song_id_list[2:] if len(song_id_list) > 2 else []
+
+        controller.enqueue_songs(connection, play_queue, initial_songs)
+        if remaining_songs:
+            backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, remaining_songs))
+            backgroundProcess.start()
+
+        # Truncate for speech to avoid overly long announcements
+        speech_title = truncate_for_speech(song_title, max_length=50)
+        speech_album = truncate_for_speech(song_album, max_length=40)
+        speech = sanitise_speech_output(f'Playing {speech_title} from {speech_album}')
+        logger.info(speech)
+        track_details = play_queue.get_next_track()
+        card = build_card_data(speech, track_details)
+
+        return controller.start_playback('play', speech, card, track_details, handler_input)
 
 
 class NaviSonicPlayPlaylist(AbstractRequestHandler):
@@ -922,7 +1016,10 @@ class NaviSonicPlaySong(AbstractRequestHandler):
             backgroundProcess = Process(target=queue_worker_thread, args=(connection, play_queue, remaining_songs))
             backgroundProcess.start()
 
-        speech = sanitise_speech_output(f'Playing {song_title} by {song_artist}')
+        # Truncate title/artist for speech to avoid overly long announcements
+        speech_title = truncate_for_speech(song_title, max_length=50)
+        speech_artist = truncate_for_speech(song_artist, max_length=40)
+        speech = sanitise_speech_output(f'Playing {speech_title} by {speech_artist}')
         logger.info(speech)
         track_details = play_queue.get_next_track()
         card = build_card_data(speech, track_details)
@@ -1234,8 +1331,8 @@ class PlaybackFailedEventHandler(AbstractRequestHandler):
     """AudioPlayer.PlaybackFailed Directive received.
 
     Handles playback failures by:
-    1. For Navidrome tracks that haven't been transcoded: Try transcoded MP3 stream
-    2. For already transcoded tracks or Plex tracks: Skip to the next track
+    1. For tracks that haven't been transcoded: Try transcoded MP3 stream
+    2. For already transcoded tracks: Skip to the next track
     """
 
     def can_handle(self, handler_input: HandlerInput) -> bool:
@@ -1251,11 +1348,11 @@ class PlaybackFailedEventHandler(AbstractRequestHandler):
 
         # Log failure and track ID
         logger.error(f'Playback Failed: {handler_input.request_envelope.request.error}')
-        logger.error(f'Failed playing track with ID: {song_id}')
+        logger.error(f'Failed playing track with ID: {song_id} from source: {source}')
 
-        # Check if we can try transcoding (only for Navidrome and not already transcoded)
-        if source == 'navidrome' and not transcoded:
-            logger.info(f'Attempting to play transcoded stream for track: {song_id}')
+        # Check if we can try transcoding (for both Navidrome and Plex, if not already transcoded)
+        if not transcoded:
+            logger.info(f'Attempting to play transcoded stream for track: {song_id} from {source}')
 
             # Get transcoded URI
             transcoded_uri = connection.get_transcoded_song_uri(song_id, source)
@@ -1268,8 +1365,7 @@ class PlaybackFailedEventHandler(AbstractRequestHandler):
                 logger.info(f'Playing transcoded track: {track_details.title} by: {track_details.artist}')
                 return controller.start_playback('play', None, None, track_details, handler_input)
 
-        # Either not Navidrome, already transcoded, or transcoding failed
-        # Skip to the next track
+        # Already transcoded or transcoding failed - skip to the next track
         logger.info('Skipping to next track after playback failure')
         track_details = play_queue.skip_current_track()
 
@@ -1369,6 +1465,52 @@ class LoggingResponseInterceptor(AbstractResponseInterceptor):
 #
 
 
+def truncate_for_speech(text: str, max_length: int = 50) -> str:
+    """Truncate text for speech output to avoid overly long announcements
+
+    :param text: The text to truncate
+    :param max_length: Maximum length before truncation
+    :return: Truncated text
+    :rtype: str
+    """
+    if not text or len(text) <= max_length:
+        return text
+
+    # Remove common filler patterns that make titles too long
+    # Split by common separators and take just the first meaningful part
+    separators = [' | ', ' - ', ' / ', ' || ', ' // ', ' : ']
+    for sep in separators:
+        if sep in text:
+            parts = text.split(sep)
+            # Take first part if it's substantial enough (more than 3 chars)
+            if len(parts[0].strip()) > 3:
+                text = parts[0].strip()
+                break
+
+    # Remove common suffix patterns
+    suffix_patterns = [
+        ' FULL SONG', ' Full Song', ' full song',
+        ' OFFICIAL VIDEO', ' Official Video', ' official video',
+        ' AUDIO', ' Audio', ' audio',
+        ' LYRICAL', ' Lyrical', ' lyrical',
+        ' HD', ' HQ', ' 4K',
+    ]
+    for pattern in suffix_patterns:
+        if text.endswith(pattern):
+            text = text[:-len(pattern)].strip()
+
+    # If still too long, truncate at word boundary
+    if len(text) > max_length:
+        truncated = text[:max_length]
+        # Try to cut at last space to avoid cutting mid-word
+        last_space = truncated.rfind(' ')
+        if last_space > max_length // 2:
+            truncated = truncated[:last_space]
+        text = truncated.strip()
+
+    return text
+
+
 def sanitise_speech_output(speech_string: str) -> str:
     """Sanitise speech output inline with the SSML standard
 
@@ -1431,6 +1573,7 @@ sb.add_request_handler(HelpHandler())
 sb.add_request_handler(NaviSonicPlayMusicByArtist())
 sb.add_request_handler(NaviSonicPlayAlbumByArtist())
 sb.add_request_handler(NaviSonicPlaySongByArtist())
+sb.add_request_handler(NaviSonicPlaySongFromAlbum())
 sb.add_request_handler(NaviSonicPlaySong())
 sb.add_request_handler(NaviSonicPlayPlaylist())
 sb.add_request_handler(NaviSonicShufflePlaylist())
@@ -1475,7 +1618,7 @@ sa.register(app=app, route='/')
 
 # Enable queue and history diagnostics
 if navidrome_log_level == 3:
-    logger.warning('AskNavidromePlex debugging has been enabled, this should only be used when testing!')
+    logger.warning(f'{APP_NAME} debugging has been enabled, this should only be used when testing!')
     logger.warning('The /buffer, /queue and /history http endpoints are available publicly!')
 
     @app.route('/queue')
@@ -1487,7 +1630,7 @@ if navidrome_log_level == 3:
 
         current_track = play_queue.get_current_track()
 
-        return render_template('table.html', title='AskNavidromePlex - Queued Tracks',
+        return render_template('table.html', title=f'{APP_NAME} - Queued Tracks',
                                tracks=play_queue.get_current_queue(), current=current_track)
 
     @app.route('/history')
@@ -1499,7 +1642,7 @@ if navidrome_log_level == 3:
 
         current_track = play_queue.get_current_track()
 
-        return render_template('table.html', title='AskNavidromePlex - Track History',
+        return render_template('table.html', title=f'{APP_NAME} - Track History',
                                tracks=play_queue.get_history(), current=current_track)
 
     @app.route('/buffer')
@@ -1511,7 +1654,7 @@ if navidrome_log_level == 3:
 
         current_track = play_queue.get_current_track()
 
-        return render_template('table.html', title='AskNavidromePlex - Buffered Tracks',
+        return render_template('table.html', title=f'{APP_NAME} - Buffered Tracks',
                                tracks=play_queue.get_buffer(), current=current_track)
 
 

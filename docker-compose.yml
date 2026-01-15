@@ -3,6 +3,8 @@ services:
     navisonic:       
         environment:
             - 'NAVI_SKILL_ID=<your-skill-id>'
+            # Custom skill name (displayed in Alexa responses)
+            - 'SKILL_NAME=AskNavidromePlex'
             # Navidrome/Subsonic settings
             - 'ENABLE_NAVIDROME=1'
             - 'NAVI_URL=https://your-navidrome-server.test'

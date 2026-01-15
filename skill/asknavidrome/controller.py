@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Union
 
 from ask_sdk_core.handler_input import HandlerInput
@@ -14,6 +15,9 @@ from .subsonic_api import SubsonicConnection
 from .media_queue import MediaQueue
 
 logger = logging.getLogger(__name__)
+
+# App name - configurable via environment variable, defaults to AskNavidromePlex
+APP_NAME = os.getenv('SKILL_NAME', 'AskNavidromePlex')
 
 #
 # Functions
@@ -54,7 +58,7 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
             
             handler_input.response_builder.set_card(
                 StandardCard(
-                    title=card_data.get('title', 'AskNavidromePlex'),
+                    title=card_data.get('title', APP_NAME),
                     text=card_data.get('text', ''),
                     image=Image(
                         small_image_url=art_url,
@@ -148,10 +152,10 @@ def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
         background_url = card_data.get('background_url') or DEFAULT_ART_URL
         
         metadata = AudioItemMetadata(
-            title=card_data.get('title', 'AskNavidromePlex'),
+            title=card_data.get('title', APP_NAME),
             subtitle=card_data.get('text', ''),
             art=display.Image(
-                content_description=card_data.get('title', 'AskNavidromePlex'),
+                content_description=card_data.get('title', APP_NAME),
                 sources=[
                     display.ImageInstance(
                         url=art_url
@@ -159,7 +163,7 @@ def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
                 ]
             ),
             background_image=display.Image(
-                content_description=card_data.get('title', 'AskNavidromePlex'),
+                content_description=card_data.get('title', APP_NAME),
                 sources=[
                     display.ImageInstance(
                         url=background_url

@@ -1,10 +1,14 @@
 from hashlib import md5
 from typing import Union
 import logging
+import os
 import random
 import secrets
 
 import libsonic
+
+# App name - configurable via environment variable, defaults to AskNavidromePlex
+APP_NAME = os.getenv('SKILL_NAME', 'AskNavidromePlex')
 
 
 class SubsonicConnection:
@@ -36,7 +40,7 @@ class SubsonicConnection:
                                         self.passwd,
                                         self.port,
                                         self.api_location,
-                                        'AskNavidromePlex',
+                                        APP_NAME,
                                         self.api_version,
                                         False)
 
@@ -183,6 +187,74 @@ class SubsonicConnection:
 
         # No results were found
         return None
+
+    def search_song_from_album(self, song_term: str, album_term: str) -> Union[list, None]:
+        """Search for a song from a specific album
+
+        This method searches for songs and filters/boosts results that match the album name.
+
+        :param str song_term: The name of the song
+        :param str album_term: The name of the album
+        :return: A list of songs sorted by relevance (song + album match), or None if no results
+        :rtype: list | None
+        """
+
+        self.logger.debug(f'In function search_song_from_album() - song: {song_term}, album: {album_term}')
+
+        # First search for the song
+        song_results = self.search_song(song_term)
+
+        if not song_results:
+            # Try searching for the album first
+            album_results = self.search_album(album_term)
+            if album_results:
+                # Get the first matching album and search within it
+                album_id = album_results[0].get('id')
+                if album_id:
+                    album_songs = self.conn.getAlbum(album_id)
+                    if album_songs and 'album' in album_songs and 'song' in album_songs['album']:
+                        songs = album_songs['album']['song']
+                        # Filter by song name
+                        normalized_song = song_term.lower()
+                        matching = [s for s in songs if normalized_song in s.get('title', '').lower()]
+                        if matching:
+                            return matching
+            return None
+
+        # Score results with album matching bonus
+        normalized_album = album_term.lower()
+        scored_results = []
+
+        for song in song_results:
+            song_album = song.get('album', '').lower()
+            
+            # Check if album matches
+            album_bonus = 0.0
+            if normalized_album in song_album or song_album in normalized_album:
+                album_bonus = 1.0  # High bonus for album match
+            elif self._fuzzy_album_match(song_album, normalized_album):
+                album_bonus = 0.5  # Partial bonus for fuzzy match
+            
+            scored_results.append((album_bonus, song))
+
+        # Sort by album match score descending
+        scored_results.sort(key=lambda x: x[0], reverse=True)
+
+        self.logger.debug(f'Found {len(scored_results)} songs for song: {song_term}, album: {album_term}')
+
+        return [song for score, song in scored_results]
+
+    def _fuzzy_album_match(self, album1: str, album2: str) -> bool:
+        """Check if two album names are similar enough
+
+        :param str album1: First album name
+        :param str album2: Second album name
+        :return: True if albums are similar
+        :rtype: bool
+        """
+        from difflib import SequenceMatcher
+        ratio = SequenceMatcher(None, album1.lower(), album2.lower()).ratio()
+        return ratio > 0.6
 
     def albums_by_artist(self, id: str) -> 'list[dict]':
         """Get the albums for a given artist
@@ -357,7 +429,7 @@ class SubsonicConnection:
         # This creates a multiline f string, uri contains a single line with both
         # f strings.
         uri = (
-            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidromePlex&u='
+            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c={APP_NAME}&u='
             f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={id}'
         )
 
@@ -382,7 +454,7 @@ class SubsonicConnection:
         auth_token = md5(self.passwd.encode() + salt.encode())
 
         uri = (
-            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c=AskNavidromePlex&u='
+            f'{self.server_url}:{self.port}{self.api_location}/stream.view?f=json&v={self.api_version}&c={APP_NAME}&u='
             f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={id}&format={format}&maxBitRate={max_bit_rate}'
         )
 
