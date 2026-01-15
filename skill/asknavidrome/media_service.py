@@ -31,14 +31,35 @@ class MediaService:
         return success
 
     def _fuzzy_match(self, s1: str, s2: str) -> float:
-        """Calculate similarity between two strings
+        """Calculate similarity between two strings with substring awareness
 
-        :param str s1: First string
-        :param str s2: Second string
-        :return: Similarity ratio (0.0 to 1.0)
+        Prioritizes substring matches (when s2 is contained in s1) over
+        character-level similarity, which works better for short search terms.
+
+        :param str s1: First string (typically the title)
+        :param str s2: Second string (typically the search term)
+        :return: Similarity ratio (0.0 to 1.0+)
         :rtype: float
         """
-        return SequenceMatcher(None, s1.lower(), s2.lower()).ratio()
+        s1_lower = s1.lower().strip()
+        s2_lower = s2.lower().strip()
+        
+        # Exact match
+        if s1_lower == s2_lower:
+            return 1.0
+        
+        # Substring match: search term is contained in title
+        if s2_lower in s1_lower:
+            # Score based on coverage - shorter titles with the term score higher
+            coverage = len(s2_lower) / len(s1_lower) if s1_lower else 0
+            return 0.7 + (coverage * 0.25)  # Range: 0.7 to 0.95
+        
+        # Prefix match bonus
+        if s1_lower.startswith(s2_lower) or s2_lower.startswith(s1_lower):
+            return 0.65
+        
+        # Fallback to sequence matching for other cases
+        return SequenceMatcher(None, s1_lower, s2_lower).ratio()
 
     def _normalize_string(self, s: str) -> str:
         """Normalize string for better matching
