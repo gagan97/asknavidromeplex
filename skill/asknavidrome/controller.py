@@ -207,8 +207,12 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
         logger.info(f'Playing track: {track_details.title} by: {track_details.artist}')
 
     elif mode == 'continue':
-        # Continuing Playback
+        # Continuing Playback (ENQUEUE mode)
         logger.debug('In start_playback() - continue mode')
+
+        # Build metadata for enqueued tracks (important for Alexa Auto and NowPlaying cards)
+        # This ensures track info is displayed when tracks are queued, not just on first play
+        enqueue_metadata = build_metadata_from_track(track_details)
 
         handler_input.response_builder.add_directive(
             PlayDirective(
@@ -221,7 +225,7 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                         # if the Previous intent is used
                         offset_in_milliseconds=0,
                         expected_previous_token=track_details.previous_id),
-                    metadata=None
+                    metadata=enqueue_metadata
                 )
             )
         ).set_should_end_session(True)
