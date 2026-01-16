@@ -344,6 +344,7 @@ document.write(`
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome-main">AskNavidrome main</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#module-asknavidrome.controller">AskNavidrome controller</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.add_screen_background"><code class="docutils literal notranslate"><span class="pre">add_screen_background()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.build_metadata_from_track"><code class="docutils literal notranslate"><span class="pre">build_metadata_from_track()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.enqueue_songs"><code class="docutils literal notranslate"><span class="pre">enqueue_songs()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.start_playback"><code class="docutils literal notranslate"><span class="pre">start_playback()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.stop"><code class="docutils literal notranslate"><span class="pre">stop()</span></code></a></li>
@@ -392,6 +393,7 @@ document.write(`
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.build_song_list_from_favourites"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.build_song_list_from_favourites()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.build_song_list_from_genre"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.build_song_list_from_genre()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.build_song_list_from_playlist"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.build_song_list_from_playlist()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.get_cover_art_url"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.get_cover_art_url()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_details"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.get_song_details()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_uri"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.get_song_uri()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.get_transcoded_song_uri"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.get_transcoded_song_uri()</span></code></a></li>
@@ -982,13 +984,16 @@ and setting it to <em>DNS Only</em>.</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.controller.add_screen_background" title="asknavidrome.controller.add_screen_background"><code class="xref py py-obj docutils literal notranslate"><span class="pre">add_screen_background</span></code></a>(card_data)</p></td>
 <td><p>Add background to card.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.controller.enqueue_songs" title="asknavidrome.controller.enqueue_songs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">enqueue_songs</span></code></a>(api, queue, song_id_list[, source])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.controller.build_metadata_from_track" title="asknavidrome.controller.build_metadata_from_track"><code class="xref py py-obj docutils literal notranslate"><span class="pre">build_metadata_from_track</span></code></a>(track_details)</p></td>
+<td><p>Build AudioItemMetadata directly from Track object.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.controller.enqueue_songs" title="asknavidrome.controller.enqueue_songs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">enqueue_songs</span></code></a>(api, queue, song_id_list[, source])</p></td>
 <td><p>Enqueue songs</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.controller.start_playback" title="asknavidrome.controller.start_playback"><code class="xref py py-obj docutils literal notranslate"><span class="pre">start_playback</span></code></a>(mode, text, card_data, ...)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.controller.start_playback" title="asknavidrome.controller.start_playback"><code class="xref py py-obj docutils literal notranslate"><span class="pre">start_playback</span></code></a>(mode, text, card_data, ...)</p></td>
 <td><p>Function to play audio.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.controller.stop" title="asknavidrome.controller.stop"><code class="xref py py-obj docutils literal notranslate"><span class="pre">stop</span></code></a>(handler_input)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.controller.stop" title="asknavidrome.controller.stop"><code class="xref py py-obj docutils literal notranslate"><span class="pre">stop</span></code></a>(handler_input)</p></td>
 <td><p>Stop playback</p></td>
 </tr>
 </tbody>
@@ -1006,6 +1011,25 @@ app.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>An Amazon AudioItemMetadata object or None if card data is not present</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>AudioItemMetadata | None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="asknavidrome.controller.build_metadata_from_track">
+<span class="sig-prename descclassname"><span class="pre">asknavidrome.controller.</span></span><span class="sig-name descname"><span class="pre">build_metadata_from_track</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">track_details</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#asknavidrome.track.Track" title="asknavidrome.track.Track"><span class="pre">Track</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">AudioItemMetadata</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#asknavidrome.controller.build_metadata_from_track" title="Link to this definition">#</a></dt>
+<dd><p>Build AudioItemMetadata directly from Track object.</p>
+<p>Used for PlaybackController handlers where we don’t have card_data
+but still need to display track info on Echo Show devices.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>track_details</strong> (<a class="reference internal" href="#asknavidrome.track.Track" title="asknavidrome.track.Track"><em>Track</em></a>) – A Track object with cover art URLs</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An Amazon AudioItemMetadata object or None</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>AudioItemMetadata | None</p>
@@ -1062,8 +1086,8 @@ and replace current and enqueued streams.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>mode</strong> (<em>str</em>) – play | continue - Play immediately or enqueue a track</p></li>
-<li><p><strong>text</strong> (<em>str</em>) – Text which should be spoken before playback starts</p></li>
-<li><p><strong>card_data</strong> (<em>dict</em>) – Data to display on a card</p></li>
+<li><p><strong>text</strong> (<em>str</em>) – Text which should be spoken before playback starts (None for PlaybackController)</p></li>
+<li><p><strong>card_data</strong> (<em>dict</em>) – Data to display on a card (can be None, will build from track_details)</p></li>
 <li><p><strong>track_details</strong> (<a class="reference internal" href="#asknavidrome.track.Track" title="asknavidrome.track.Track"><em>Track</em></a>) – A Track object containing details of the track to use</p></li>
 <li><p><strong>handler_input</strong> (<em>HandlerInput</em>) – The Amazon Alexa HandlerInput object</p></li>
 </ul>
@@ -1589,40 +1613,43 @@ queue.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.build_song_list_from_playlist" title="asknavidrome.subsonic_api.SubsonicConnection.build_song_list_from_playlist"><code class="xref py py-obj docutils literal notranslate"><span class="pre">build_song_list_from_playlist</span></code></a>(id)</p></td>
 <td><p>Build a list of songs from a given playlist</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_details" title="asknavidrome.subsonic_api.SubsonicConnection.get_song_details"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_song_details</span></code></a>(id)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.get_cover_art_url" title="asknavidrome.subsonic_api.SubsonicConnection.get_cover_art_url"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_cover_art_url</span></code></a>(cover_art_id[, size])</p></td>
+<td><p>Create a URL for cover art</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_details" title="asknavidrome.subsonic_api.SubsonicConnection.get_song_details"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_song_details</span></code></a>(id)</p></td>
 <td><p>Get details about a given song ID</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_uri" title="asknavidrome.subsonic_api.SubsonicConnection.get_song_uri"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_song_uri</span></code></a>(id)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_uri" title="asknavidrome.subsonic_api.SubsonicConnection.get_song_uri"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_song_uri</span></code></a>(id)</p></td>
 <td><p>Create a URI for a given song</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.get_transcoded_song_uri" title="asknavidrome.subsonic_api.SubsonicConnection.get_transcoded_song_uri"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_transcoded_song_uri</span></code></a>(id[, format, ...])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.get_transcoded_song_uri" title="asknavidrome.subsonic_api.SubsonicConnection.get_transcoded_song_uri"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_transcoded_song_uri</span></code></a>(id[, format, ...])</p></td>
 <td><p>Create a transcoded URI for a given song</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.ping" title="asknavidrome.subsonic_api.SubsonicConnection.ping"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ping</span></code></a>()</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.ping" title="asknavidrome.subsonic_api.SubsonicConnection.ping"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ping</span></code></a>()</p></td>
 <td><p>Ping a Subsonic API server</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.scrobble" title="asknavidrome.subsonic_api.SubsonicConnection.scrobble"><code class="xref py py-obj docutils literal notranslate"><span class="pre">scrobble</span></code></a>(track_id, time)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.scrobble" title="asknavidrome.subsonic_api.SubsonicConnection.scrobble"><code class="xref py py-obj docutils literal notranslate"><span class="pre">scrobble</span></code></a>(track_id, time)</p></td>
 <td><p>Scrobble the given track</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_album" title="asknavidrome.subsonic_api.SubsonicConnection.search_album"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_album</span></code></a>(term)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_album" title="asknavidrome.subsonic_api.SubsonicConnection.search_album"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_album</span></code></a>(term)</p></td>
 <td><p>Search the media server for the given album</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_artist" title="asknavidrome.subsonic_api.SubsonicConnection.search_artist"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_artist</span></code></a>(term)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_artist" title="asknavidrome.subsonic_api.SubsonicConnection.search_artist"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_artist</span></code></a>(term)</p></td>
 <td><p>Search the media server for the given artist</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_playlist" title="asknavidrome.subsonic_api.SubsonicConnection.search_playlist"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_playlist</span></code></a>(term)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_playlist" title="asknavidrome.subsonic_api.SubsonicConnection.search_playlist"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_playlist</span></code></a>(term)</p></td>
 <td><p>Search the media server for the given playlist</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_song" title="asknavidrome.subsonic_api.SubsonicConnection.search_song"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_song</span></code></a>(term)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_song" title="asknavidrome.subsonic_api.SubsonicConnection.search_song"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_song</span></code></a>(term)</p></td>
 <td><p>Search the media server for the given song</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_song_from_album" title="asknavidrome.subsonic_api.SubsonicConnection.search_song_from_album"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_song_from_album</span></code></a>(song_term, album_term)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.search_song_from_album" title="asknavidrome.subsonic_api.SubsonicConnection.search_song_from_album"><code class="xref py py-obj docutils literal notranslate"><span class="pre">search_song_from_album</span></code></a>(song_term, album_term)</p></td>
 <td><p>Search for a song from a specific album</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.star_entry" title="asknavidrome.subsonic_api.SubsonicConnection.star_entry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">star_entry</span></code></a>(id, mode)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.star_entry" title="asknavidrome.subsonic_api.SubsonicConnection.star_entry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">star_entry</span></code></a>(id, mode)</p></td>
 <td><p>Add a star to the given entity</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.unstar_entry" title="asknavidrome.subsonic_api.SubsonicConnection.unstar_entry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">unstar_entry</span></code></a>(id, mode)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#asknavidrome.subsonic_api.SubsonicConnection.unstar_entry" title="asknavidrome.subsonic_api.SubsonicConnection.unstar_entry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">unstar_entry</span></code></a>(id, mode)</p></td>
 <td><p>Remove a star from the given entity</p></td>
 </tr>
 </tbody>
@@ -1736,6 +1763,28 @@ until song_count is greater than of equal to length</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="asknavidrome.subsonic_api.SubsonicConnection.get_cover_art_url">
+<span class="sig-name descname"><span class="pre">get_cover_art_url</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cover_art_id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">500</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="headerlink" href="#asknavidrome.subsonic_api.SubsonicConnection.get_cover_art_url" title="Link to this definition">#</a></dt>
+<dd><p>Create a URL for cover art</p>
+<p>Creates a URL for the cover art image represented by the given ID.
+Authentication details are embedded in the URL.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cover_art_id</strong> (<em>str</em>) – A cover art ID (usually album ID or ‘al-xxx’)</p></li>
+<li><p><strong>size</strong> (<em>int</em>) – Size of the image in pixels (default: 500)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A properly formatted URL for the cover art</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="asknavidrome.subsonic_api.SubsonicConnection.get_song_details">
 <span class="sig-name descname"><span class="pre">get_song_details</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">id</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_details" title="Link to this definition">#</a></dt>
 <dd><p>Get details about a given song ID</p>
@@ -1744,7 +1793,7 @@ until song_count is greater than of equal to length</p>
 <dd class="field-odd"><p><strong>id</strong> (<em>str</em>) – A song ID</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A dictionary of details about the given song.</p>
+<dd class="field-even"><p>A dictionary of details about the given song, including cover art URLs.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>dict</p>
@@ -2052,6 +2101,7 @@ is working</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome-main">AskNavidrome main</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#module-asknavidrome.controller">AskNavidrome controller</a><ul class="nav section-nav flex-column">
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.add_screen_background"><code class="docutils literal notranslate"><span class="pre">add_screen_background()</span></code></a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.build_metadata_from_track"><code class="docutils literal notranslate"><span class="pre">build_metadata_from_track()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.enqueue_songs"><code class="docutils literal notranslate"><span class="pre">enqueue_songs()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.start_playback"><code class="docutils literal notranslate"><span class="pre">start_playback()</span></code></a></li>
 <li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.controller.stop"><code class="docutils literal notranslate"><span class="pre">stop()</span></code></a></li>
@@ -2100,6 +2150,7 @@ is working</p>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.build_song_list_from_favourites"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.build_song_list_from_favourites()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.build_song_list_from_genre"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.build_song_list_from_genre()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.build_song_list_from_playlist"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.build_song_list_from_playlist()</span></code></a></li>
+<li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.get_cover_art_url"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.get_cover_art_url()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_details"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.get_song_details()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.get_song_uri"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.get_song_uri()</span></code></a></li>
 <li class="toc-h5 nav-item toc-entry"><a class="reference internal nav-link" href="#asknavidrome.subsonic_api.SubsonicConnection.get_transcoded_song_uri"><code class="docutils literal notranslate"><span class="pre">SubsonicConnection.get_transcoded_song_uri()</span></code></a></li>

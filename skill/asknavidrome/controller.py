@@ -19,8 +19,117 @@ logger = logging.getLogger(__name__)
 # App name - configurable via environment variable, defaults to AskNavidromePlex
 APP_NAME = os.getenv('SKILL_NAME', 'AskNavidromePlex')
 
+# Default fallback image URL
+DEFAULT_ART_URL = 'https://github.com/navidrome/navidrome/raw/master/resources/logo-192x192.png'
+
 #
-# Functions
+# Helper Functions
+#
+
+
+def build_metadata_from_track(track_details: Track) -> Union[AudioItemMetadata, None]:
+    """Build AudioItemMetadata directly from Track object.
+
+    Used for PlaybackController handlers where we don't have card_data
+    but still need to display track info on Echo Show devices.
+
+    :param Track track_details: A Track object with cover art URLs
+    :return: An Amazon AudioItemMetadata object or None
+    :rtype: AudioItemMetadata | None
+    """
+    if not track_details:
+        return None
+
+    logger.debug('In build_metadata_from_track()')
+
+    art_url = getattr(track_details, 'cover_art_url', None) or DEFAULT_ART_URL
+    background_url = getattr(track_details, 'background_url', None) or DEFAULT_ART_URL
+    title = getattr(track_details, 'title', '') or 'Unknown Track'
+    artist = getattr(track_details, 'artist', '') or 'Unknown Artist'
+    album = getattr(track_details, 'album', '') or ''
+
+    # Build subtitle with artist and album info
+    subtitle = artist
+    if album:
+        subtitle = f"{artist} • {album}"
+
+    metadata = AudioItemMetadata(
+        title=title,
+        subtitle=subtitle,
+        art=display.Image(
+            content_description=title,
+            sources=[
+                display.ImageInstance(
+                    url=art_url,
+                    width_pixels=512,
+                    height_pixels=512
+                )
+            ]
+        ),
+        background_image=display.Image(
+            content_description=title,
+            sources=[
+                display.ImageInstance(
+                    url=background_url,
+                    width_pixels=1280,
+                    height_pixels=800
+                )
+            ]
+        )
+    )
+
+    return metadata
+
+
+def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
+    """Add background to card.
+
+    Cards are viewable on devices with screens and in the Alexa
+    app.
+
+    :param dict card_data: Dictionary containing card data
+    :return: An Amazon AudioItemMetadata object or None if card data is not present
+    :rtype: AudioItemMetadata | None
+    """
+    logger.debug('In add_screen_background()')
+
+    if card_data:
+        # Use cover art URL from card_data if available, otherwise use default
+        art_url = card_data.get('art_url') or DEFAULT_ART_URL
+        background_url = card_data.get('background_url') or DEFAULT_ART_URL
+        
+        metadata = AudioItemMetadata(
+            title=card_data.get('title', APP_NAME),
+            subtitle=card_data.get('text', ''),
+            art=display.Image(
+                content_description=card_data.get('title', APP_NAME),
+                sources=[
+                    display.ImageInstance(
+                        url=art_url,
+                        width_pixels=512,
+                        height_pixels=512
+                    )
+                ]
+            ),
+            background_image=display.Image(
+                content_description=card_data.get('title', APP_NAME),
+                sources=[
+                    display.ImageInstance(
+                        url=background_url,
+                        width_pixels=1280,
+                        height_pixels=800
+                    )
+                ]
+            )
+        )
+
+        return metadata
+    else:
+        return None
+
+
+#
+# Main Functions
 #
 
 
@@ -39,8 +148,8 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
              and replace current and enqueued streams.
 
     :param str mode: play | continue - Play immediately or enqueue a track
-    :param str text: Text which should be spoken before playback starts
-    :param dict card_data: Data to display on a card
+    :param str text: Text which should be spoken before playback starts (None for PlaybackController)
+    :param dict card_data: Data to display on a card (can be None, will build from track_details)
     :param Track track_details: A Track object containing details of the track to use
     :param HandlerInput handler_input: The Amazon Alexa HandlerInput object
     :return: Amazon Alexa Response class
@@ -51,8 +160,16 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
         # Starting playback
         logger.debug('In start_playback() - play mode')
 
+        # Build metadata for display - use card_data if provided, otherwise build from track_details
+        metadata = None
         if card_data:
-            # Cards are only supported if we are starting a new session
+            metadata = add_screen_background(card_data)
+        elif track_details:
+            # Build metadata directly from track details (for PlaybackController handlers)
+            metadata = build_metadata_from_track(track_details)
+
+        # Only set Card when we have speech (text) - PlaybackController cannot have Cards
+        if card_data and text:
             # Get art URL from card_data with fallback to default
             art_url = card_data.get('art_url') or DEFAULT_ART_URL
             
@@ -76,7 +193,7 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                         url=track_details.uri,
                         offset_in_milliseconds=track_details.offset,
                         expected_previous_token=None),
-                    metadata=add_screen_background(card_data) if card_data else None
+                    metadata=metadata
                 )
             )
         ).set_should_end_session(True)
@@ -128,57 +245,6 @@ def stop(handler_input: HandlerInput) -> Response:
     handler_input.response_builder.add_directive(StopDirective())
 
     return handler_input.response_builder.response
-
-
-# Default fallback image URL
-DEFAULT_ART_URL = 'https://github.com/navidrome/navidrome/raw/master/resources/logo-192x192.png'
-
-
-def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
-    """Add background to card.
-
-    Cards are viewable on devices with screens and in the Alexa
-    app.
-
-    :param dict card_data: Dictionary containing card data
-    :return: An Amazon AudioItemMetadata object or None if card data is not present
-    :rtype: AudioItemMetadata | None
-    """
-    logger.debug('In add_screen_background()')
-
-    if card_data:
-        # Use cover art URL from card_data if available, otherwise use default
-        art_url = card_data.get('art_url') or DEFAULT_ART_URL
-        background_url = card_data.get('background_url') or DEFAULT_ART_URL
-        
-        metadata = AudioItemMetadata(
-            title=card_data.get('title', APP_NAME),
-            subtitle=card_data.get('text', ''),
-            art=display.Image(
-                content_description=card_data.get('title', APP_NAME),
-                sources=[
-                    display.ImageInstance(
-                        url=art_url,
-                        width_pixels=512,
-                        height_pixels=512
-                    )
-                ]
-            ),
-            background_image=display.Image(
-                content_description=card_data.get('title', APP_NAME),
-                sources=[
-                    display.ImageInstance(
-                        url=background_url,
-                        width_pixels=1280,
-                        height_pixels=800
-                    )
-                ]
-            )
-        )
-
-        return metadata
-    else:
-        return None
 
 
 def enqueue_songs(api, queue: MediaQueue, song_id_list: list, source: str = 'navidrome') -> None:

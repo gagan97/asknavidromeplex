@@ -433,17 +433,49 @@ class SubsonicConnection:
         else:
             return None
 
+    def get_cover_art_url(self, cover_art_id: str, size: int = 500) -> str:
+        """Create a URL for cover art
+
+        Creates a URL for the cover art image represented by the given ID.
+        Authentication details are embedded in the URL.
+
+        :param str cover_art_id: A cover art ID (usually album ID or 'al-xxx')
+        :param int size: Size of the image in pixels (default: 500)
+        :return: A properly formatted URL for the cover art
+        :rtype: str
+        """
+
+        self.logger.debug(f'In function get_cover_art_url() - id: {cover_art_id}')
+
+        salt = secrets.token_hex(16)
+        auth_token = md5(self.passwd.encode() + salt.encode())
+
+        url = (
+            f'{self.server_url}:{self.port}{self.api_location}/getCoverArt.view?f=json&v={self.api_version}&c={APP_NAME}&u='
+            f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={cover_art_id}&size={size}'
+        )
+
+        return url
+
     def get_song_details(self, id: str) -> dict:
         """Get details about a given song ID
 
         :param str id: A song ID
-        :return: A dictionary of details about the given song.
+        :return: A dictionary of details about the given song, including cover art URLs.
         :rtype: dict
         """
 
         self.logger.debug('In function get_song_details()')
 
         song_details = self.conn.getSong(id)
+
+        # Add cover art URLs if coverArt ID is present
+        if song_details and 'song' in song_details:
+            song = song_details['song']
+            cover_art_id = song.get('coverArt') or song.get('albumId')
+            if cover_art_id:
+                song['coverPosterUrl'] = self.get_cover_art_url(cover_art_id, size=512)
+                song['backgroundUrl'] = self.get_cover_art_url(cover_art_id, size=1280)
 
         return song_details
 
