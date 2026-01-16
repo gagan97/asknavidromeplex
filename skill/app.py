@@ -1378,6 +1378,89 @@ class PreviousPlaybackHandler(AbstractRequestHandler):
         return controller.start_playback('play', None, None, track_details, handler_input)
 
 
+class PlaybackControllerNextHandler(AbstractRequestHandler):
+    """Handle PlaybackController.NextCommandIssued (physical button press)
+    
+    Note: PlaybackController requests cannot contain outputSpeech, reprompt,
+    or shouldEndSession - only audio directives are allowed.
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_request_type('PlaybackController.NextCommandIssued')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In PlaybackControllerNextHandler')
+
+        track_details = play_queue.get_next_track()
+        track_details.offset = 0
+
+        # For PlaybackController, we must not include speech - just return the audio directive
+        return controller.start_playback('play', None, None, track_details, handler_input)
+
+
+class PlaybackControllerPreviousHandler(AbstractRequestHandler):
+    """Handle PlaybackController.PreviousCommandIssued (physical button press)
+    
+    Note: PlaybackController requests cannot contain outputSpeech, reprompt,
+    or shouldEndSession - only audio directives are allowed.
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_request_type('PlaybackController.PreviousCommandIssued')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In PlaybackControllerPreviousHandler')
+
+        track_details = play_queue.get_previous_track()
+        track_details.offset = 0
+
+        # For PlaybackController, we must not include speech - just return the audio directive
+        return controller.start_playback('play', None, None, track_details, handler_input)
+
+
+class PlaybackControllerPlayHandler(AbstractRequestHandler):
+    """Handle PlaybackController.PlayCommandIssued (physical button press)
+    
+    Note: PlaybackController requests cannot contain outputSpeech, reprompt,
+    or shouldEndSession - only audio directives are allowed.
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_request_type('PlaybackController.PlayCommandIssued')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In PlaybackControllerPlayHandler')
+
+        current_track = play_queue.get_current_track()
+
+        if current_track and current_track.id:
+            # Resume current track
+            return controller.start_playback('play', None, None, current_track, handler_input)
+        elif play_queue.get_queue_count() > 0:
+            # Get next track from queue
+            track_details = play_queue.get_next_track()
+            return controller.start_playback('play', None, None, track_details, handler_input)
+        else:
+            # Nothing to play - return empty response
+            return handler_input.response_builder.response
+
+
+class PlaybackControllerPauseHandler(AbstractRequestHandler):
+    """Handle PlaybackController.PauseCommandIssued (physical button press)
+    
+    Note: PlaybackController requests cannot contain outputSpeech, reprompt,
+    or shouldEndSession - only audio directives are allowed.
+    """
+
+    def can_handle(self, handler_input: HandlerInput) -> bool:
+        return is_request_type('PlaybackController.PauseCommandIssued')(handler_input)
+
+    def handle(self, handler_input: HandlerInput) -> Response:
+        logger.debug('In PlaybackControllerPauseHandler')
+
+        return controller.stop(handler_input)
+
+
 class PlaybackFailedEventHandler(AbstractRequestHandler):
     """AudioPlayer.PlaybackFailed Directive received.
 
@@ -1654,6 +1737,12 @@ sb.add_request_handler(NextPlaybackHandler())
 sb.add_request_handler(PreviousPlaybackHandler())
 sb.add_request_handler(ResumePlaybackHandler())
 sb.add_request_handler(PlaybackFailedEventHandler())
+
+# Register PlaybackController Handlers (physical button presses)
+sb.add_request_handler(PlaybackControllerNextHandler())
+sb.add_request_handler(PlaybackControllerPreviousHandler())
+sb.add_request_handler(PlaybackControllerPlayHandler())
+sb.add_request_handler(PlaybackControllerPauseHandler())
 
 
 # Register Exception Handlers

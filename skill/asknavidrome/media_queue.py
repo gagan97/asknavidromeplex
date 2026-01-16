@@ -232,6 +232,11 @@ class MediaQueue:
 
         self.logger.debug('In get_previous_track()')
 
+        # Check if history is empty (no previous tracks)
+        if not self.history:
+            self.logger.debug('No previous track available, returning current track')
+            return self.current_track
+
         # Return the current track to the queue
         self.queue.appendleft(self.current_track)
 
