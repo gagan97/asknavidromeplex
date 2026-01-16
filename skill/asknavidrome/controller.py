@@ -81,53 +81,6 @@ def build_metadata_from_track(track_details: Track) -> Union[AudioItemMetadata, 
     return metadata
 
 
-def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
-    """Add background to card.
-
-    Cards are viewable on devices with screens and in the Alexa
-    app.
-
-    :param dict card_data: Dictionary containing card data
-    :return: An Amazon AudioItemMetadata object or None if card data is not present
-    :rtype: AudioItemMetadata | None
-    """
-    logger.debug('In add_screen_background()')
-
-    if card_data:
-        # Use cover art URL from card_data if available, otherwise use default
-        art_url = card_data.get('art_url') or DEFAULT_ART_URL
-        background_url = card_data.get('background_url') or DEFAULT_ART_URL
-        
-        metadata = AudioItemMetadata(
-            title=card_data.get('title', APP_NAME),
-            subtitle=card_data.get('text', ''),
-            art=display.Image(
-                content_description=card_data.get('title', APP_NAME),
-                sources=[
-                    display.ImageInstance(
-                        url=art_url,
-                        width_pixels=512,
-                        height_pixels=512
-                    )
-                ]
-            ),
-            background_image=display.Image(
-                content_description=card_data.get('title', APP_NAME),
-                sources=[
-                    display.ImageInstance(
-                        url=background_url,
-                        width_pixels=1280,
-                        height_pixels=800
-                    )
-                ]
-            )
-        )
-
-        return metadata
-    else:
-        return None
-
-
 #
 # Main Functions
 #
@@ -160,13 +113,9 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
         # Starting playback
         logger.debug('In start_playback() - play mode')
 
-        # Build metadata for display - use card_data if provided, otherwise build from track_details
-        metadata = None
-        if card_data:
-            metadata = add_screen_background(card_data)
-        elif track_details:
-            # Build metadata directly from track details (for PlaybackController handlers)
-            metadata = build_metadata_from_track(track_details)
+        # Always build metadata from track details for accurate NowPlaying display
+        # This ensures Alexa Auto and other devices show correct track info (title, artist, album art)
+        metadata = build_metadata_from_track(track_details)
 
         # Only set Card when we have speech (text) - PlaybackController cannot have Cards
         if card_data and text:
