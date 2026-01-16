@@ -61,8 +61,8 @@ def build_metadata_from_track(track_details: Track) -> Union[AudioItemMetadata, 
             sources=[
                 display.ImageInstance(
                     url=art_url,
-                    width_pixels=512,
-                    height_pixels=512
+                    width_pixels=1024,
+                    height_pixels=1024
                 )
             ]
         ),
@@ -71,8 +71,8 @@ def build_metadata_from_track(track_details: Track) -> Union[AudioItemMetadata, 
             sources=[
                 display.ImageInstance(
                     url=background_url,
-                    width_pixels=1280,
-                    height_pixels=800
+                    width_pixels=1920,
+                    height_pixels=1080
                 )
             ]
         )

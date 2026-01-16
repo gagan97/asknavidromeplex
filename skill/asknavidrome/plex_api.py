@@ -52,6 +52,29 @@ class PlexConnection:
 
         self.logger.debug('PlexConnection initialized')
 
+    def _build_image_url(
+        self,
+        path: str,
+        width: int = 1024,
+        height: int = 1024,
+        image_format: str = 'png',
+        min_size: int = 1,
+        upscale: int = 1,
+    ) -> str:
+        """Construct a Plex image URL with Alexa-friendly sizing hints."""
+
+        if not path:
+            return None
+
+        # Ensure path is URL-encoded but preserve slashes
+        encoded_path = urllib.parse.quote(path)
+        base = f"{self.base_url}{encoded_path}"
+        return (
+            f"{base}?X-Plex-Token={self.token}"
+            f"&format={image_format}&minSize={min_size}&upscale={upscale}"
+            f"&width={width}&height={height}"
+        )
+
     def ping(self) -> bool:
         """Ping Plex server
 
@@ -601,9 +624,9 @@ class PlexConnection:
             cover_poster_url = None
             background_url = None
             if poster_info.get('coverPoster'):
-                cover_poster_url = f"{self.base_url}{poster_info['coverPoster']}?X-Plex-Token={self.token}"
+                cover_poster_url = self._build_image_url(poster_info['coverPoster'], width=1024, height=1024)
             if poster_info.get('background'):
-                background_url = f"{self.base_url}{poster_info['background']}?X-Plex-Token={self.token}"
+                background_url = self._build_image_url(poster_info['background'], width=1920, height=1080)
             
             # Get ID from direct access (required for API calls)
             track_id = m.get('ratingKey') if isinstance(m, dict) else getattr(m, 'ratingKey', None) or getattr(m, 'rating_key', None)
@@ -764,11 +787,11 @@ class PlexConnection:
             cover_poster_url = None
             background_url = None
             if hasattr(track, 'thumb') and track.thumb:
-                cover_poster_url = f"{self.base_url}{track.thumb}?X-Plex-Token={self.token}"
+                cover_poster_url = self._build_image_url(track.thumb, width=1024, height=1024)
             if hasattr(track, 'art') and track.art:
-                background_url = f"{self.base_url}{track.art}?X-Plex-Token={self.token}"
+                background_url = self._build_image_url(track.art, width=1920, height=1080)
             elif hasattr(track, 'grandparentArt') and track.grandparentArt:
-                background_url = f"{self.base_url}{track.grandparentArt}?X-Plex-Token={self.token}"
+                background_url = self._build_image_url(track.grandparentArt, width=1920, height=1080)
             
             # Build the list of all artists
             all_artists = []
@@ -1418,9 +1441,9 @@ class PlexConnection:
                 cover_poster_url = None
                 background_url = None
                 if poster_info.get('coverPoster'):
-                    cover_poster_url = f"{self.base_url}{poster_info['coverPoster']}?X-Plex-Token={self.token}"
+                    cover_poster_url = self._build_image_url(poster_info['coverPoster'], width=1024, height=1024)
                 if poster_info.get('background'):
-                    background_url = f"{self.base_url}{poster_info['background']}?X-Plex-Token={self.token}"
+                    background_url = self._build_image_url(poster_info['background'], width=1920, height=1080)
 
                 return {
                     'song': {

@@ -433,14 +433,28 @@ class SubsonicConnection:
         else:
             return None
 
-    def get_cover_art_url(self, cover_art_id: str, size: int = 500) -> str:
-        """Create a URL for cover art
+    def get_cover_art_url(
+        self,
+        cover_art_id: str,
+        size: int = 500,
+        width: int = None,
+        height: int = None,
+        image_format: str = None,
+        min_size: int = None,
+        upscale: int = None,
+    ) -> str:
+        """Create a URL for cover art with optional sizing hints.
 
-        Creates a URL for the cover art image represented by the given ID.
-        Authentication details are embedded in the URL.
+        Subsonic/Navidrome natively supports ``size``; other parameters are
+        included as optional hints for display surfaces that honor them.
 
         :param str cover_art_id: A cover art ID (usually album ID or 'al-xxx')
-        :param int size: Size of the image in pixels (default: 500)
+        :param int size: Square size in pixels (default: 500)
+        :param int width: Optional explicit width hint
+        :param int height: Optional explicit height hint
+        :param str image_format: Optional image format (e.g., 'png', 'jpg')
+        :param int min_size: Optional minimum size hint
+        :param int upscale: Optional upscale hint (1/0)
         :return: A properly formatted URL for the cover art
         :rtype: str
         """
@@ -450,10 +464,32 @@ class SubsonicConnection:
         salt = secrets.token_hex(16)
         auth_token = md5(self.passwd.encode() + salt.encode())
 
-        url = (
-            f'{self.server_url}:{self.port}{self.api_location}/getCoverArt.view?f=json&v={self.api_version}&c={APP_NAME}&u='
-            f'{self.user}&s={salt}&t={auth_token.hexdigest()}&id={cover_art_id}&size={size}'
-        )
+        # Base required params
+        params = {
+            'f': 'json',
+            'v': self.api_version,
+            'c': APP_NAME,
+            'u': self.user,
+            's': salt,
+            't': auth_token.hexdigest(),
+            'id': cover_art_id,
+            'size': size,
+        }
+
+        # Optional hints (ignored if server does not support)
+        if width:
+            params['width'] = width
+        if height:
+            params['height'] = height
+        if image_format:
+            params['format'] = image_format
+        if min_size is not None:
+            params['minSize'] = min_size
+        if upscale is not None:
+            params['upscale'] = upscale
+
+        query = '&'.join([f"{k}={v}" for k, v in params.items()])
+        url = f"{self.server_url}:{self.port}{self.api_location}/getCoverArt.view?{query}"
 
         return url
 
@@ -474,8 +510,24 @@ class SubsonicConnection:
             song = song_details['song']
             cover_art_id = song.get('coverArt') or song.get('albumId')
             if cover_art_id:
-                song['coverPosterUrl'] = self.get_cover_art_url(cover_art_id, size=512)
-                song['backgroundUrl'] = self.get_cover_art_url(cover_art_id, size=1280)
+                song['coverPosterUrl'] = self.get_cover_art_url(
+                    cover_art_id,
+                    size=512,
+                    width=1024,
+                    height=1024,
+                    image_format='png',
+                    min_size=1,
+                    upscale=1,
+                )
+                song['backgroundUrl'] = self.get_cover_art_url(
+                    cover_art_id,
+                    size=1280,
+                    width=1920,
+                    height=1080,
+                    image_format='png',
+                    min_size=1,
+                    upscale=1,
+                )
 
         return song_details
 
