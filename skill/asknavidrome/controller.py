@@ -158,7 +158,9 @@ def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
                 content_description=card_data.get('title', APP_NAME),
                 sources=[
                     display.ImageInstance(
-                        url=art_url
+                        url=art_url,
+                        width_pixels=512,
+                        height_pixels=512
                     )
                 ]
             ),
@@ -166,7 +168,9 @@ def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
                 content_description=card_data.get('title', APP_NAME),
                 sources=[
                     display.ImageInstance(
-                        url=background_url
+                        url=background_url,
+                        width_pixels=1280,
+                        height_pixels=800
                     )
                 ]
             )

@@ -112,11 +112,20 @@ class MediaQueue:
     def add_track(self, track: Track) -> None:
         """Add tracks to the queue
 
+        Adds a track to the queue if it is not a duplicate.
+        A track is considered a duplicate if another track with the same
+        title, artist, and album already exists in the queue.
+
         :param Track track: A Track object containing details of the track to be played
         :return: None
         """
 
         self.logger.debug('In add_track()')
+
+        # Check for duplicates by comparing title, artist, and album
+        if self._is_duplicate(track):
+            self.logger.debug(f'Skipping duplicate track: {track.title} by {track.artist}')
+            return
 
         if not self.queue:
             # This is the first track in the queue
@@ -137,6 +146,33 @@ class MediaQueue:
             self.queue.append(track)
 
         self.logger.debug(f'In add_track() - there are {len(self.queue)} tracks in the queue')
+
+    def _is_duplicate(self, track: Track) -> bool:
+        """Check if a track is a duplicate of any track in the queue
+
+        A track is considered a duplicate if another track with the same
+        title, artist, and album already exists in the queue.
+
+        :param Track track: The track to check for duplicates
+        :return: True if the track is a duplicate, False otherwise
+        :rtype: bool
+        """
+        # Normalize strings for comparison (case-insensitive, stripped)
+        track_title = (track.title or '').lower().strip()
+        track_artist = (track.artist or '').lower().strip()
+        track_album = (track.album or '').lower().strip()
+
+        for existing_track in self.queue:
+            existing_title = (existing_track.title or '').lower().strip()
+            existing_artist = (existing_track.artist or '').lower().strip()
+            existing_album = (existing_track.album or '').lower().strip()
+
+            if (track_title == existing_title and
+                track_artist == existing_artist and
+                track_album == existing_album):
+                return True
+
+        return False
 
     def shuffle(self) -> None:
         """Shuffle the queue
