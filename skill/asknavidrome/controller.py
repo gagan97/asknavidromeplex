@@ -7,7 +7,8 @@ from ask_sdk_model import Response
 from ask_sdk_model.ui import StandardCard, Image
 from ask_sdk_model.interfaces.audioplayer import (
     PlayDirective, PlayBehavior, AudioItem, Stream, AudioItemMetadata,
-    StopDirective)
+    StopDirective, CaptionData)
+from ask_sdk_model.interfaces.audioplayer.caption_type import CaptionType
 from ask_sdk_model.interfaces import display
 
 from .track import Track
@@ -60,7 +61,9 @@ def build_metadata_from_track(track_details: Track) -> Union[AudioItemMetadata, 
             content_description=title,
             sources=[
                 display.ImageInstance(
-                    url=art_url
+                    url=art_url,
+                    width_pixels=1024,
+                    height_pixels=1024
                 )
             ]
         ),
@@ -68,7 +71,9 @@ def build_metadata_from_track(track_details: Track) -> Union[AudioItemMetadata, 
             content_description=title,
             sources=[
                 display.ImageInstance(
-                    url=background_url
+                    url=background_url,
+                    width_pixels=1920,
+                    height_pixels=1080
                 )
             ]
         )
@@ -77,47 +82,39 @@ def build_metadata_from_track(track_details: Track) -> Union[AudioItemMetadata, 
     return metadata
 
 
-def add_screen_background(card_data: dict) -> Union[AudioItemMetadata, None]:
-    """Add background to card.
+def build_caption_from_track(track_details: Track) -> Union[CaptionData, None]:
+    """Build minimal WEBVTT caption payload for automotive/infotainment displays.
 
-    Cards are viewable on devices with screens and in the Alexa
-    app.
-
-    :param dict card_data: Dictionary containing card data
-    :return: An Amazon AudioItemMetadata object or None if card data is not present
-    :rtype: AudioItemMetadata | None
+    Alexa AudioPlayer supports a single CaptionData object; WEBVTT is the only
+    allowed type. We emit a simple, non-timed caption line with Title and
+    Artist/Album so head units have something to render even without lyrics.
     """
-    logger.debug('In add_screen_background()')
-
-    if card_data:
-        # Use cover art URL from card_data if available, otherwise use default
-        art_url = card_data.get('art_url') or DEFAULT_ART_URL
-        background_url = card_data.get('background_url') or DEFAULT_ART_URL
-        
-        metadata = AudioItemMetadata(
-            title=card_data.get('title', APP_NAME),
-            subtitle=card_data.get('text', ''),
-            art=display.Image(
-                content_description=card_data.get('title', APP_NAME),
-                sources=[
-                    display.ImageInstance(
-                        url=art_url
-                    )
-                ]
-            ),
-            background_image=display.Image(
-                content_description=card_data.get('title', APP_NAME),
-                sources=[
-                    display.ImageInstance(
-                        url=background_url
-                    )
-                ]
-            )
-        )
-
-        return metadata
-    else:
+    if not track_details:
         return None
+
+    title = getattr(track_details, 'title', '') or ''
+    artist = getattr(track_details, 'artist', '') or ''
+    album = getattr(track_details, 'album', '') or ''
+
+    # If we have nothing meaningful, skip captions
+    if not title and not artist:
+        return None
+
+    # Single cue covering first 10 minutes (long enough for typical tracks)
+    # This is intentionally simple; head units usually just need one line to show.
+    caption_line = f"{title}" if title else ''
+    if artist:
+        caption_line = f"{caption_line} — {artist}" if caption_line else artist
+    if album:
+        caption_line = f"{caption_line} • {album}" if caption_line else album
+
+    content = (
+        "WEBVTT\n\n"
+        "00:00.000 --> 10:00.000\n"
+        f"{caption_line}\n"
+    )
+
+    return CaptionData(content=content, object_type=CaptionType.WEBVTT)
 
 
 #
@@ -152,13 +149,9 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
         # Starting playback
         logger.debug('In start_playback() - play mode')
 
-        # Build metadata for display - use card_data if provided, otherwise build from track_details
-        metadata = None
-        if card_data:
-            metadata = add_screen_background(card_data)
-        elif track_details:
-            # Build metadata directly from track details (for PlaybackController handlers)
-            metadata = build_metadata_from_track(track_details)
+        # Always build metadata from track details for accurate NowPlaying display
+        # This ensures Alexa Auto and other devices show correct track info (title, artist, album art)
+        metadata = build_metadata_from_track(track_details)
 
         # Only set Card when we have speech (text) - PlaybackController cannot have Cards
         if card_data and text:
@@ -176,6 +169,8 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                 )
             )
 
+        caption_data = build_caption_from_track(track_details)
+
         handler_input.response_builder.add_directive(
             PlayDirective(
                 play_behavior=PlayBehavior.REPLACE_ALL,
@@ -184,7 +179,9 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                         token=track_details.id,
                         url=track_details.uri,
                         offset_in_milliseconds=track_details.offset,
-                        expected_previous_token=None),
+                        expected_previous_token=None,
+                        caption_data=caption_data
+                    ),
                     metadata=metadata
                 )
             )
@@ -199,8 +196,14 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
         logger.info(f'Playing track: {track_details.title} by: {track_details.artist}')
 
     elif mode == 'continue':
-        # Continuing Playback
+        # Continuing Playback (ENQUEUE mode)
         logger.debug('In start_playback() - continue mode')
+
+        # Build metadata for enqueued tracks (important for Alexa Auto and NowPlaying cards)
+        # This ensures track info is displayed when tracks are queued, not just on first play
+        enqueue_metadata = build_metadata_from_track(track_details)
+
+        enqueue_caption = build_caption_from_track(track_details)
 
         handler_input.response_builder.add_directive(
             PlayDirective(
@@ -212,8 +215,10 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                         # Offset is 0 to allow playing of the next track from the beginning
                         # if the Previous intent is used
                         offset_in_milliseconds=0,
-                        expected_previous_token=track_details.previous_id),
-                    metadata=None
+                        expected_previous_token=track_details.previous_id,
+                        caption_data=enqueue_caption
+                    ),
+                    metadata=enqueue_metadata
                 )
             )
         ).set_should_end_session(True)

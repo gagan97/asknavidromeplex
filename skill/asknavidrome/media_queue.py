@@ -51,6 +51,9 @@ class MediaQueue:
         self.original_queue: deque = deque()
         """Original queue for loop mode"""
 
+        self._track_keys: set = set()
+        """Set of track keys for O(1) duplicate detection"""
+
     def get_current_track(self) -> Track:
         """Method to return current_track attribute
 
@@ -112,11 +115,26 @@ class MediaQueue:
     def add_track(self, track: Track) -> None:
         """Add tracks to the queue
 
+        Adds a track to the queue if it is not a duplicate.
+        A track is considered a duplicate if another track with the same
+        title, artist, and album already exists in the queue.
+
         :param Track track: A Track object containing details of the track to be played
         :return: None
         """
 
         self.logger.debug('In add_track()')
+
+        # Get track key for duplicate checking
+        track_key = self._get_track_key(track)
+
+        # Check for duplicates using the set for O(1) lookup
+        if track_key in self._track_keys:
+            self.logger.debug(f'Skipping duplicate track: {track.title} by {track.artist}')
+            return
+
+        # Add track key to the set
+        self._track_keys.add(track_key)
 
         if not self.queue:
             # This is the first track in the queue
@@ -137,6 +155,19 @@ class MediaQueue:
             self.queue.append(track)
 
         self.logger.debug(f'In add_track() - there are {len(self.queue)} tracks in the queue')
+
+    def _get_track_key(self, track: Track) -> tuple:
+        """Generate a normalized key for a track for duplicate detection
+
+        :param Track track: The track to generate a key for
+        :return: A tuple of (title, artist, album) in lowercase
+        :rtype: tuple
+        """
+        return (
+            (track.title or '').lower().strip(),
+            (track.artist or '').lower().strip(),
+            (track.album or '').lower().strip()
+        )
 
     def shuffle(self) -> None:
         """Shuffle the queue
@@ -274,6 +305,7 @@ class MediaQueue:
         self.history.clear()
         self.buffer.clear()
         self.original_queue.clear()
+        self._track_keys.clear()
         self.playback_mode = self.MODE_NORMAL
         self.current_track = Track()
 
