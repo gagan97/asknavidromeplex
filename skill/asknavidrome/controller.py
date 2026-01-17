@@ -7,7 +7,8 @@ from ask_sdk_model import Response
 from ask_sdk_model.ui import StandardCard, Image
 from ask_sdk_model.interfaces.audioplayer import (
     PlayDirective, PlayBehavior, AudioItem, Stream, AudioItemMetadata,
-    StopDirective)
+    StopDirective, CaptionData)
+from ask_sdk_model.interfaces.audioplayer.caption_type import CaptionType
 from ask_sdk_model.interfaces import display
 
 from .track import Track
@@ -81,6 +82,41 @@ def build_metadata_from_track(track_details: Track) -> Union[AudioItemMetadata, 
     return metadata
 
 
+def build_caption_from_track(track_details: Track) -> Union[CaptionData, None]:
+    """Build minimal WEBVTT caption payload for automotive/infotainment displays.
+
+    Alexa AudioPlayer supports a single CaptionData object; WEBVTT is the only
+    allowed type. We emit a simple, non-timed caption line with Title and
+    Artist/Album so head units have something to render even without lyrics.
+    """
+    if not track_details:
+        return None
+
+    title = getattr(track_details, 'title', '') or ''
+    artist = getattr(track_details, 'artist', '') or ''
+    album = getattr(track_details, 'album', '') or ''
+
+    # If we have nothing meaningful, skip captions
+    if not title and not artist:
+        return None
+
+    # Single cue covering first 10 minutes (long enough for typical tracks)
+    # This is intentionally simple; head units usually just need one line to show.
+    caption_line = f"{title}" if title else ''
+    if artist:
+        caption_line = f"{caption_line} — {artist}" if caption_line else artist
+    if album:
+        caption_line = f"{caption_line} • {album}" if caption_line else album
+
+    content = (
+        "WEBVTT\n\n"
+        "00:00.000 --> 10:00.000\n"
+        f"{caption_line}\n"
+    )
+
+    return CaptionData(content=content, object_type=CaptionType.WEBVTT)
+
+
 #
 # Main Functions
 #
@@ -133,6 +169,8 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                 )
             )
 
+        caption_data = build_caption_from_track(track_details)
+
         handler_input.response_builder.add_directive(
             PlayDirective(
                 play_behavior=PlayBehavior.REPLACE_ALL,
@@ -141,7 +179,9 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                         token=track_details.id,
                         url=track_details.uri,
                         offset_in_milliseconds=track_details.offset,
-                        expected_previous_token=None),
+                        expected_previous_token=None,
+                        caption_data=caption_data
+                    ),
                     metadata=metadata
                 )
             )
@@ -163,6 +203,8 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
         # This ensures track info is displayed when tracks are queued, not just on first play
         enqueue_metadata = build_metadata_from_track(track_details)
 
+        enqueue_caption = build_caption_from_track(track_details)
+
         handler_input.response_builder.add_directive(
             PlayDirective(
                 play_behavior=PlayBehavior.ENQUEUE,
@@ -173,7 +215,9 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                         # Offset is 0 to allow playing of the next track from the beginning
                         # if the Previous intent is used
                         offset_in_milliseconds=0,
-                        expected_previous_token=track_details.previous_id),
+                        expected_previous_token=track_details.previous_id,
+                        caption_data=enqueue_caption
+                    ),
                     metadata=enqueue_metadata
                 )
             )
