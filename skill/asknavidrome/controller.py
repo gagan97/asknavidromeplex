@@ -141,7 +141,6 @@ def start_playback(mode: str, text: str, card_data: dict, track_details: Track, 
                         token=track_details.id,
                         url=track_details.uri,
                         offset_in_milliseconds=track_details.offset,
-                        metadata=metadata,
                         expected_previous_token=None),
                     metadata=metadata
                 )
